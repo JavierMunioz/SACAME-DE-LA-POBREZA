@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-29] Fase 0 completa: estructura base backend/frontend
+- Se crea `backend/` (FastAPI + SQLAlchemy, `app/{core,models,routers,schemas}`) y `frontend/` (Vue 3 + Vite + TypeScript + Vue Router + Pinia).
+- `docker-compose.yml` levanta PostgreSQL local en puerto **5434** (5432 y 5433 ya ocupados por otros proyectos en esta máquina — ajustar si se despliega en otra máquina).
+- Endpoint `/health` en FastAPI, probado contra Postgres real (conexión SQLAlchemy verificada, no solo import).
+- Router de Vue con una vista placeholder por rol (`cliente`, `mesero`, `cocina`, `admin`) y guard de ruta (`router/index.ts`) contra un store `stores/auth.ts` — **stub**, sin autenticación real todavía (eso es Fase 1).
+- Verificado end-to-end: build, typecheck (`vue-tsc`) y dev server sirviendo las rutas por rol en el navegador.
+- Próximo paso: Fase 1 — modelo de datos en Postgres (tablas `restaurantes`, `mesas`, `reservas`, `usuarios`, `pedidos`, `items_pedido`, `menu`, `facturas`) + autenticación real por rol + constraint anti-doble-reserva.
+
 ### [pendiente] Rol de administrador general + QR por mesa
 - Se agrega un cuarto rol: **administrador general**, dueño de dar de alta restaurantes en la plataforma (antes solo existían cliente/mesero/cocina/admin de restaurante).
 - El admin general crea el restaurante, define sus mesas, y genera un **QR único por mesa**.
