@@ -103,7 +103,7 @@ onUnmounted(() => {
         <div class="marca-icono">
           <el-icon :size="18"><KnifeFork /></el-icon>
         </div>
-        <h1>Epicurean <span class="marca-acento">Cocina</span></h1>
+        <h1>Sacame de la Pobreza <span class="marca-acento">Cocina</span></h1>
         <div class="separador" />
         <div class="reloj">
           <span class="font-mono">{{ horaActual }}</span>
@@ -216,7 +216,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 0 var(--gutter);
   height: 64px;
-  background: var(--surface);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
@@ -259,7 +259,7 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-container);
+  background: var(--surface-muted);
   border-radius: var(--radius-sm);
   font-weight: 700;
 }
@@ -299,7 +299,7 @@ onUnmounted(() => {
 }
 
 .boton-icono:hover {
-  background: var(--color-surface-container-high);
+  background: var(--surface-muted);
 }
 
 .contenido {
@@ -346,8 +346,12 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-md);
-  transition: transform var(--duration-base) var(--ease-standard);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-comanda:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
 .tarjeta-comanda--urgente {
@@ -361,7 +365,7 @@ onUnmounted(() => {
   align-items: center;
   padding: var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--color-surface-container-low);
+  background: var(--surface-muted);
 }
 
 .tarjeta-comanda--urgente .cabecera-comanda {
@@ -387,7 +391,7 @@ onUnmounted(() => {
   font-weight: 700;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-container-highest);
+  background: var(--surface-muted);
   color: var(--text-primary);
 }
 
@@ -429,7 +433,7 @@ onUnmounted(() => {
 .observaciones-caja {
   margin: 0 var(--space-4) var(--space-4);
   padding: var(--space-3);
-  background: var(--color-surface-container);
+  background: var(--surface-muted);
   border-radius: var(--radius-sm);
 }
 
@@ -454,7 +458,7 @@ onUnmounted(() => {
 
 .acciones-comanda {
   padding: var(--space-4);
-  background: var(--color-surface-container-low);
+  background: var(--surface-muted);
 }
 
 .tarjeta-comanda--urgente .acciones-comanda {

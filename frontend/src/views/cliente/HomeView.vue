@@ -40,7 +40,8 @@ onMounted(async () => {
 
 <template>
   <div class="pagina">
-    <header class="encabezado">
+    <div class="fondo-hero" aria-hidden="true"></div>
+    <header class="encabezado glass-panel">
       <div class="marca">
         <span class="marca-icono">S</span>
         <span class="marca-nombre">Sacame de la Pobreza</span>
@@ -96,7 +97,18 @@ onMounted(async () => {
 
 <style scoped>
 .pagina {
+  position: relative;
   min-height: 100dvh;
+}
+
+.fondo-hero {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(79, 70, 229, 0.1), transparent 40%),
+    radial-gradient(circle at 90% 15%, rgba(24, 24, 27, 0.06), transparent 40%);
+  pointer-events: none;
 }
 
 .encabezado {
@@ -104,7 +116,6 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
@@ -200,7 +211,7 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   padding: var(--space-6);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
   transition:
     box-shadow var(--duration-base) var(--ease-standard),
     border-color var(--duration-base) var(--ease-standard);
@@ -210,7 +221,7 @@ onMounted(async () => {
 }
 
 .tarjeta-restaurante:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
   border-color: var(--color-secondary);
 }
 

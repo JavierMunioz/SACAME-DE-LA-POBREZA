@@ -308,7 +308,7 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .nav-item--activo {
-  background: var(--color-surface-container-high);
+  background: var(--surface-muted);
   color: var(--color-secondary);
 }
 
@@ -397,7 +397,12 @@ onUnmounted(() => clearInterval(intervalo))
   border-left: 4px solid var(--color-warning);
   border-radius: var(--radius-md);
   padding: var(--space-5);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-pedido:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
 .tarjeta-pedido--confirmado,

@@ -363,7 +363,7 @@ onUnmounted(() => {
 }
 
 .nav-item:hover {
-  background: var(--color-surface-container);
+  background: var(--surface-muted);
 }
 
 .contenido {
@@ -444,7 +444,12 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   padding: var(--space-5);
   text-align: center;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-qr:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
 .encabezado-tarjeta-qr {
@@ -528,7 +533,7 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-5);
-  box-shadow: var(--shadow-soft-sm), var(--highlight-inset);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -536,7 +541,7 @@ onUnmounted(() => {
 }
 
 .tarjeta-metrica:hover {
-  box-shadow: var(--shadow-soft-md), var(--highlight-inset);
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
 /* Única celda con variación de fondo del bento (evita "todo blanco"). */
@@ -575,7 +580,7 @@ onUnmounted(() => {
 .barra-capacidad {
   height: 6px;
   border-radius: var(--radius-full);
-  background: var(--color-surface-container);
+  background: var(--surface-muted);
   overflow: hidden;
   margin: var(--space-1) 0;
 }

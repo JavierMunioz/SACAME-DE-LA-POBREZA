@@ -56,6 +56,16 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Corrección: la reestructuración visual anterior fue insuficiente — reescritura real, no parches
+El usuario rechazó con fuerza el primer intento de "base Linear/Stripe + Bento + Soft UI + Glass" — ese pase solo agregó tokens nuevos (sombras soft-UI, clase glass) *encima* del sistema "Epicurean" viejo (mismo `--radius-xl: 1.5rem`, misma marca "Epicurean" hardcodeada en varios headers, mismas variables `--color-surface-container-*` heredadas de la línea de diseño anterior). Pidió explícitamente borrar y reconstruir con pensamiento fresco, no un cambio de color arriba de lo mismo.
+
+- **`design-system.css` reescrito desde cero** (no editado incrementalmente): radios más chicos y consistentes (Linear usa ~8-10px, no 24px), sombras planas por default (`--shadow-sm/md/lg` casi imperceptibles, al estilo Stripe) con `--shadow-soft`/`--shadow-soft-hover` como acento aparte, superficie sin blanco puro (`--surface-sunken: #fafafa`), paleta negro+indigo intacta (lo único que se conservó a propósito).
+- **Se eliminó la marca falsa "Epicurean"** que había quedado hardcodeada en el header de `AppSidebar.vue` y en el `<h1>` de `cocina/HomeView.vue` — nombre inventado de una línea de diseño que ya no existe como tal, reemplazado por el nombre real del producto ("Sacame de la Pobreza") en todos lados.
+- **Barrido completo de variables viejas**: `--color-surface-container(-high/-low/-highest)`, `--color-on-surface`, `--color-outline`, `var(--surface)` (sin sufijo) — ninguna existe en el nuevo `design-system.css`, así que cualquier referencia vieja hubiera quedado rota visualmente (fondo transparente). Se grepeó todo `frontend/src` después de la reescritura y se confirmó cero referencias colgantes antes de dar por terminada la tarea.
+- **Bento/Soft-UI/Glass aplicados de verdad, no solo en el dashboard admin de la pasada anterior**: tarjetas de mesa (admin y cliente), tarjetas de pedido (mesero), tarjetas de comanda (cocina) — todas con `--shadow-soft` + `--highlight-inset`. Glass agregado también al header sticky de la homepage de cliente (pedido explícito: "...o la página de inicio"), no solo login/modales.
+- Mismo alcance de personas que la pasada anterior (admin/cocina/mesero/cliente), pero esta vez tocando efectivamente los 4, no solo login+dashboard admin.
+- Build + typecheck limpios, backend sin tocar (53/53). Probado en vivo las 4 personas: login con glass, dashboard admin con bento, KDS y comanda sin la marca vieja, homepage cliente con header glass.
+
 ### [2026-07-30] Reestructuración visual: base Linear/Stripe + Bento UI + Soft UI + Glassmorphism puntual
 El usuario consideró el diseño "horroroso" y pidió una reestructuración visual completa (no un cambio de color): base minimalista tipo Linear/Stripe, organización Bento en dashboards, toques sutiles de Soft UI (relieve ligero), y glassmorphism solo en elementos puntuales (login, modales) — manteniendo la paleta negro+indigo actual, que sí le gusta. Se invocó la skill `design-taste-frontend` instalada en el proyecto.
 

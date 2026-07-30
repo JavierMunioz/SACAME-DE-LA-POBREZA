@@ -12,10 +12,10 @@ const emit = defineEmits<{ salir: [] }>()
   <aside class="sidebar">
     <div class="sidebar-marca">
       <div class="sidebar-marca-icono">
-        <el-icon :size="20"><KnifeFork /></el-icon>
+        <el-icon :size="18"><KnifeFork /></el-icon>
       </div>
       <div>
-        <h1 class="sidebar-marca-nombre">Epicurean</h1>
+        <h1 class="sidebar-marca-nombre">Sacame de la Pobreza</h1>
         <p class="sidebar-marca-sub">{{ subtitulo }}</p>
       </div>
     </div>
@@ -27,7 +27,7 @@ const emit = defineEmits<{ salir: [] }>()
     <div class="sidebar-footer">
       <slot name="accion-principal" />
       <button type="button" class="sidebar-link" @click="emit('salir')">
-        <el-icon :size="18"><SwitchButton /></el-icon>
+        <el-icon :size="16"><SwitchButton /></el-icon>
         <span>Salir</span>
       </button>
     </div>
@@ -38,7 +38,7 @@ const emit = defineEmits<{ salir: [] }>()
 .sidebar {
   width: var(--sidebar-width);
   min-height: 100vh;
-  background: var(--surface);
+  background: var(--surface-raised);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -51,23 +51,23 @@ const emit = defineEmits<{ salir: [] }>()
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--gutter);
+  padding: var(--space-5) var(--gutter);
 }
 
 .sidebar-marca-icono {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary);
+  background: var(--color-secondary);
   color: white;
   flex-shrink: 0;
 }
 
 .sidebar-marca-nombre {
-  font-size: 1.125rem;
-  font-weight: 700;
+  font-size: 0.875rem;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -77,30 +77,30 @@ const emit = defineEmits<{ salir: [] }>()
 }
 
 .sidebar-nav {
-  margin-top: var(--space-4);
+  margin-top: var(--space-2);
   flex: 1;
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
 .sidebar-footer {
-  padding: var(--space-4);
+  padding: var(--space-3);
   border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .sidebar-link {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   background: none;
   border: none;
@@ -111,6 +111,7 @@ const emit = defineEmits<{ salir: [] }>()
 }
 
 .sidebar-link:hover {
-  background: var(--color-surface-container);
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 </style>
