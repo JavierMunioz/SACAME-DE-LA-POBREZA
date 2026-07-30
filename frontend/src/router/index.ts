@@ -9,6 +9,11 @@ const router = createRouter({
       redirect: '/cliente',
     },
     {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+    },
+    {
       path: '/cliente',
       name: 'cliente',
       component: () => import('../views/cliente/HomeView.vue'),
@@ -29,24 +34,35 @@ const router = createRouter({
     {
       path: '/admin',
       name: 'admin',
-      component: () => import('../views/admin/HomeView.vue'),
-      meta: { rol: 'admin' as Rol },
+      component: () => import('../views/admin/RestaurantesView.vue'),
+      meta: { rol: 'admin_general' as Rol },
+    },
+    {
+      path: '/admin/restaurantes/:id',
+      name: 'admin-restaurante-detalle',
+      component: () => import('../views/admin/RestauranteDetalleView.vue'),
+      meta: { rol: 'admin_general' as Rol },
     },
   ],
 })
 
-// Guard por rol. La autenticación real llega en Fase 1 (ver Plan.md);
-// por ahora solo bloquea navegar a un rol distinto al activo en el store.
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const rolRequerido = to.meta.rol as Rol | undefined
   if (!rolRequerido) return true
 
   const auth = useAuthStore()
-  if (auth.rol === null) {
-    auth.setRol(rolRequerido)
-    return true
+  if (!auth.token) {
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
-  if (auth.rol !== rolRequerido) {
+  if (!auth.usuario) {
+    try {
+      await auth.cargarUsuario()
+    } catch {
+      auth.logout()
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
+  if (auth.usuario?.rol !== rolRequerido) {
     return false
   }
   return true
