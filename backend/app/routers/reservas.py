@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.models import Mesa, Reserva, Rol, Usuario
+from app.routers.mesas import _expirar_reservas_vencidas
 from app.schemas.reserva import ReservaCreate, ReservaOut
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
@@ -18,6 +19,11 @@ def crear_reserva(
 ):
     if db.get(Mesa, datos.mesa_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
+
+    # Libera primero cualquier reserva vencida sin check-in: si no, una
+    # reserva "zombi" (activa mas sin nadie) bloquearía este horario para
+    # todos aunque ya debería haberse liberado sola.
+    _expirar_reservas_vencidas(db, datos.mesa_id)
 
     reserva = Reserva(
         mesa_id=datos.mesa_id,

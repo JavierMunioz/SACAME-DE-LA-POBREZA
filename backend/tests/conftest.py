@@ -15,6 +15,7 @@ from app.models import (
     Reserva,
     Restaurante,
     Rol,
+    SesionMesa,
     Usuario,
 )
 
@@ -41,6 +42,9 @@ def cleanup_usuarios_de_test():
             synchronize_session=False
         )
         db.query(Pedido).filter(Pedido.id.in_(pedido_ids)).delete(synchronize_session=False)
+        db.query(SesionMesa).filter(SesionMesa.cliente_id.in_(ids)).delete(
+            synchronize_session=False
+        )
         db.query(Reserva).filter(Reserva.cliente_id.in_(ids)).delete(synchronize_session=False)
         db.query(Usuario).filter(Usuario.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
@@ -67,14 +71,16 @@ def restaurante_con_mesa():
     db.refresh(mesa)
     db.refresh(item)
     yield {"restaurante": restaurante, "mesa": mesa, "menu_item": item}
-    # Borrar primero lo que depende de la mesa (reservas, pedidos/items),
-    # si no la FK bloquea el delete de mesa y, más tarde, el de usuarios.
+    # Borrar primero lo que depende de la mesa (reservas, sesiones,
+    # pedidos/items), si no la FK bloquea el delete de mesa y, más tarde,
+    # el de usuarios.
     pedido_ids = [p.id for p in db.query(Pedido).filter(Pedido.mesa_id == mesa.id).all()]
     if pedido_ids:
         db.query(ItemPedido).filter(ItemPedido.pedido_id.in_(pedido_ids)).delete(
             synchronize_session=False
         )
         db.query(Pedido).filter(Pedido.id.in_(pedido_ids)).delete(synchronize_session=False)
+    db.query(SesionMesa).filter(SesionMesa.mesa_id == mesa.id).delete()
     db.query(Factura).filter(Factura.mesa_id == mesa.id).delete()
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
     db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).delete()

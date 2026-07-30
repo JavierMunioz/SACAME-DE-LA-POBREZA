@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -5,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_roles
-from app.models import EstadoPedido, Factura, Mesa, Pedido, Rol, Usuario
+from app.models import EstadoMesa, EstadoPedido, Factura, Mesa, Pedido, Rol, SesionMesa, Usuario
 from app.schemas.factura import FacturaCreate, FacturaOut
 from app.schemas.pedido import ItemPedidoOut
 
@@ -87,6 +88,17 @@ def generar_factura(
     for pedido in pedidos:
         pedido.factura_id = factura.id
         pedido.estado = EstadoPedido.ENTREGADO
+
+    # Facturar cierra la mesa: se acabó la sesión de quien la reclamó, y
+    # la mesa vuelve a estar libre para el próximo comensal.
+    sesion = (
+        db.query(SesionMesa)
+        .filter(SesionMesa.mesa_id == mesa_id, SesionMesa.cerrada_at.is_(None))
+        .first()
+    )
+    if sesion is not None:
+        sesion.cerrada_at = datetime.now(timezone.utc)
+    mesa.estado = EstadoMesa.LIBRE
 
     db.commit()
     db.refresh(factura)

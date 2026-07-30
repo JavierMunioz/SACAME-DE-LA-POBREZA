@@ -186,7 +186,12 @@ onUnmounted(() => {
         <el-empty v-if="mesas.length === 0" description="Sin mesas todavía" />
         <div v-else class="grid-qr">
           <div v-for="mesa in mesas" :key="mesa.id" class="tarjeta-qr">
-            <p class="numero-mesa">Mesa {{ mesa.numero }}</p>
+            <div class="encabezado-tarjeta-qr">
+              <p class="numero-mesa">Mesa {{ mesa.numero }}</p>
+              <span class="badge-estado-mesa" :class="`badge-estado-mesa--${mesa.estado}`">
+                {{ mesa.estado === 'ocupada' ? 'Ocupada' : 'Libre' }}
+              </span>
+            </div>
             <p class="capacidad">{{ mesa.capacidad }} personas</p>
             <div class="marco-qr">
               <img v-if="qrUrls[mesa.id]" :src="qrUrls[mesa.id]" :alt="`QR mesa ${mesa.numero}`" />
@@ -377,8 +382,34 @@ onUnmounted(() => {
   box-shadow: var(--shadow-sm);
 }
 
+.encabezado-tarjeta-qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
 .numero-mesa {
   font-weight: 600;
+}
+
+.badge-estado-mesa {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.badge-estado-mesa--libre {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.badge-estado-mesa--ocupada {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
 }
 
 .capacidad {

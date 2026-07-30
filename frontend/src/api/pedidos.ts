@@ -20,14 +20,19 @@ export interface Pedido {
   mesa_id: number
   mesa_numero: number
   cliente_id: number | null
+  nombre_invitado: string | null
   estado: 'pendiente' | 'confirmado' | 'preparando' | 'listo' | 'cancelado' | 'entregado'
   created_at: string
   confirmado_at: string | null
   items: ItemPedido[]
 }
 
-export async function crearPedido(mesaId: number, items: ItemPedidoInput[]) {
-  const { data } = await api.post('/pedidos', { mesa_id: mesaId, items })
+export async function crearPedido(mesaId: number, items: ItemPedidoInput[], sesionToken?: string) {
+  const { data } = await api.post('/pedidos', {
+    mesa_id: mesaId,
+    items,
+    sesion_token: sesionToken,
+  })
   return data
 }
 

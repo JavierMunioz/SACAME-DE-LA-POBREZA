@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -24,6 +24,14 @@ class Pedido(Base):
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
     mesero_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
     factura_id: Mapped[int | None] = mapped_column(ForeignKey("facturas.id"), nullable=True)
+    sesion_mesa_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sesiones_mesa.id"), nullable=True
+    )
+    # Nombre tipeado por el invitado al reclamar la mesa (ver SesionMesa).
+    # Snapshot al momento del pedido — no sigue cambios posteriores de la
+    # sesión. Null si quien pidió es un cliente logueado (ya tiene nombre
+    # vía cliente_id).
+    nombre_invitado: Mapped[str | None] = mapped_column(String(80), nullable=True)
     estado: Mapped[EstadoPedido] = mapped_column(
         Enum(EstadoPedido, name="estado_pedido", values_callable=lambda e: [m.value for m in e]),
         default=EstadoPedido.PENDIENTE,

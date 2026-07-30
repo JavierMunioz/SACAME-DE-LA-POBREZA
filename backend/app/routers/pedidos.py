@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user_opcional, require_roles
-from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, Usuario
+from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, SesionMesa, Usuario
 from app.schemas.pedido import ItemPedidoOut, PedidoCreate, PedidoOut
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
@@ -17,6 +17,7 @@ def _pedido_a_out(pedido: Pedido) -> PedidoOut:
         mesa_id=pedido.mesa_id,
         mesa_numero=pedido.mesa.numero,
         cliente_id=pedido.cliente_id,
+        nombre_invitado=pedido.nombre_invitado,
         estado=pedido.estado,
         created_at=pedido.created_at,
         confirmado_at=pedido.confirmado_at,
@@ -64,6 +65,33 @@ def crear_pedido(
     if not datos.items:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
 
+    # Un invitado sin cuenta necesita haber reclamado la mesa antes de
+    # pedir (POST /mesas/{id}/ocupar o /unirse) — así sabemos su nombre y
+    # confirmamos que la mesa sigue siendo suya. Un cliente logueado puede
+    # pedir con o sin sesión (compatibilidad con el flujo directo previo).
+    sesion: SesionMesa | None = None
+    nombre_invitado: str | None = None
+    if datos.sesion_token is not None:
+        sesion = (
+            db.query(SesionMesa)
+            .filter(
+                SesionMesa.token == datos.sesion_token,
+                SesionMesa.mesa_id == mesa.id,
+                SesionMesa.cerrada_at.is_(None),
+            )
+            .first()
+        )
+        if sesion is None:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "La sesión de esta mesa venció o no existe"
+            )
+        nombre_invitado = sesion.nombre_invitado
+    elif usuario is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Necesitás abrir o unirte a la mesa antes de pedir (escaneá el QR)",
+        )
+
     menu_ids = [item.menu_item_id for item in datos.items]
     menu_items = (
         db.query(MenuItem)
@@ -78,7 +106,12 @@ def crear_pedido(
             f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
         )
 
-    pedido = Pedido(mesa_id=mesa.id, cliente_id=usuario.id if usuario else None)
+    pedido = Pedido(
+        mesa_id=mesa.id,
+        cliente_id=usuario.id if usuario else None,
+        sesion_mesa_id=sesion.id if sesion else None,
+        nombre_invitado=nombre_invitado,
+    )
     db.add(pedido)
     db.flush()
 

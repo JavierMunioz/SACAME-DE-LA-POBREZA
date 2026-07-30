@@ -182,6 +182,9 @@ onUnmounted(() => clearInterval(intervalo))
                 {{ etiquetaEstado[pedido.estado] }}
               </span>
             </div>
+            <p v-if="pedido.nombre_invitado" class="nombre-invitado">
+              Pidió: {{ pedido.nombre_invitado }} <span class="chip-invitado-pedido">invitado</span>
+            </p>
             <ul class="items-pedido">
               <li v-for="item in pedido.items" :key="item.id">
                 <span class="cantidad-item">{{ item.cantidad }}×</span> {{ item.menu_item_nombre }}
@@ -441,6 +444,25 @@ onUnmounted(() => clearInterval(intervalo))
 .badge-estado--listo {
   background: var(--color-success-bg);
   color: var(--color-success-text);
+}
+
+.nombre-invitado {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.chip-invitado-pedido {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
 }
 
 .items-pedido {

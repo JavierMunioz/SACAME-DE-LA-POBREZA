@@ -31,6 +31,7 @@ export interface Mesa {
   restaurante_id: number
   numero: number
   capacidad: number
+  estado: 'libre' | 'ocupada'
   qr_generado_at: string
   qr_url: string
 }
