@@ -37,8 +37,8 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Envío del pedido confirmado a cocina
 
 ## Fase 4 — Flujo de cocina
-- [ ] Pantalla de comanda de cocina, orden FIFO por hora de llegada
-- [ ] Detalle completo del pedido (mesa, productos, observaciones)
+- [x] Pantalla de comanda de cocina, orden FIFO por hora de llegada
+- [x] Detalle completo del pedido (mesa, productos, observaciones)
 
 ## Fase 5 — Facturación
 - [ ] Generar voucher de factura desde la comanda principal

@@ -31,8 +31,8 @@ export async function crearPedido(mesaId: number, items: ItemPedidoInput[]) {
   return data
 }
 
-export async function listarPedidos(): Promise<Pedido[]> {
-  const { data } = await api.get<Pedido[]>('/pedidos')
+export async function listarPedidos(estado?: Pedido['estado']): Promise<Pedido[]> {
+  const { data } = await api.get<Pedido[]>('/pedidos', { params: estado ? { estado } : {} })
   return data
 }
 

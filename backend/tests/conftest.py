@@ -116,6 +116,27 @@ def mesero_autenticado(client, restaurante_con_mesa):
 
 
 @pytest.fixture
+def cocina_autenticado(client, restaurante_con_mesa):
+    email = "cocina-fixture@sacame-tests.dev"
+    db = SessionLocal()
+    db.add(
+        Usuario(
+            nombre="Cocina fixture",
+            email=email,
+            password_hash=hash_password("clave12345"),
+            rol=Rol.COCINA,
+            restaurante_id=restaurante_con_mesa["restaurante"].id,
+        )
+    )
+    db.commit()
+    db.close()
+
+    login = client.post("/auth/login", data={"username": email, "password": "clave12345"})
+    token = login.json()["access_token"]
+    return {"token": token, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+@pytest.fixture
 def admin_autenticado(client):
     email = "admin-fixture@sacame-tests.dev"
     db = SessionLocal()
