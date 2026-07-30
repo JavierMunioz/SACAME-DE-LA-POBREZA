@@ -11,6 +11,13 @@ const auth = useAuthStore()
 
 const estaLogueado = computed(() => !!auth.usuario)
 
+// No hay fotos reales de los restaurantes en el dominio todavía — se usa
+// una imagen determinística (mismo restaurante = misma foto siempre) en
+// vez de dejar la tarjeta sin imagen o inventar una URL falsa.
+function imagenRestaurante(r: Restaurante, ancho: number, alto: number): string {
+  return `https://picsum.photos/seed/restaurante-${r.id}/${ancho}/${alto}`
+}
+
 async function cargar() {
   cargando.value = true
   restaurantes.value = await listarRestaurantes()
@@ -40,7 +47,6 @@ onMounted(async () => {
 
 <template>
   <div class="pagina">
-    <div class="fondo-hero" aria-hidden="true"></div>
     <header class="encabezado glass-panel">
       <div class="marca">
         <span class="marca-icono">S</span>
@@ -65,9 +71,9 @@ onMounted(async () => {
         <div v-for="i in 3" :key="i" class="tarjeta-skeleton">
           <el-skeleton animated>
             <template #template>
-              <el-skeleton-item variant="text" style="width: 60%; height: 20px" />
-              <el-skeleton-item variant="text" style="width: 90%; margin-top: 10px" />
-              <el-skeleton-item variant="text" style="width: 40%; margin-top: 10px" />
+              <el-skeleton-item variant="image" style="height: 140px" />
+              <el-skeleton-item variant="text" style="width: 60%; height: 20px; margin-top: 12px" />
+              <el-skeleton-item variant="text" style="width: 40%; margin-top: 8px" />
             </template>
           </el-skeleton>
         </div>
@@ -78,17 +84,27 @@ onMounted(async () => {
         <p class="estado-vacio-texto">Volvé a intentarlo más tarde.</p>
       </div>
 
-      <div v-else class="grid-restaurantes">
+      <div v-else class="bento-restaurantes">
         <button
-          v-for="r in restaurantes"
+          v-for="(r, i) in restaurantes"
           :key="r.id"
           type="button"
           class="tarjeta-restaurante"
+          :class="{ 'tarjeta-restaurante--destacada': i === 0 }"
           @click="verRestaurante(r.id)"
         >
-          <h2>{{ r.nombre }}</h2>
-          <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
-          <span class="ver-mas">Ver menú y reservar →</span>
+          <div class="tarjeta-restaurante-imagen">
+            <img
+              :src="imagenRestaurante(r, i === 0 ? 800 : 400, i === 0 ? 480 : 260)"
+              :alt="r.nombre"
+              loading="lazy"
+            />
+          </div>
+          <div class="tarjeta-restaurante-cuerpo">
+            <h2>{{ r.nombre }}</h2>
+            <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
+            <span class="ver-mas">Ver menú y reservar →</span>
+          </div>
         </button>
       </div>
     </main>
@@ -97,18 +113,8 @@ onMounted(async () => {
 
 <style scoped>
 .pagina {
-  position: relative;
   min-height: 100dvh;
-}
-
-.fondo-hero {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(79, 70, 229, 0.1), transparent 40%),
-    radial-gradient(circle at 90% 15%, rgba(24, 24, 27, 0.06), transparent 40%);
-  pointer-events: none;
+  background: var(--surface-sunken);
 }
 
 .encabezado {
@@ -173,7 +179,7 @@ onMounted(async () => {
 }
 
 .contenido {
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-6) var(--space-16);
 }
@@ -192,37 +198,67 @@ onMounted(async () => {
   font-size: 1rem;
 }
 
-.grid-restaurantes {
+/* Bento real: el primer restaurante ocupa una tarjeta grande a todo lo
+   ancho (imagen más grande), el resto en una grilla de 2 columnas. */
+.bento-restaurantes {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-4);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-5);
 }
 
-@media (min-width: 560px) {
-  .grid-restaurantes {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 640px) {
+  .bento-restaurantes {
+    grid-template-columns: 1fr;
   }
+}
+
+.tarjeta-restaurante--destacada {
+  grid-column: 1 / -1;
+}
+
+.tarjeta-restaurante--destacada .tarjeta-restaurante-imagen {
+  height: 220px;
 }
 
 .tarjeta-restaurante {
   text-align: left;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   cursor: pointer;
   box-shadow: var(--shadow-soft), var(--highlight-inset);
   transition:
     box-shadow var(--duration-base) var(--ease-standard),
-    border-color var(--duration-base) var(--ease-standard);
+    transform var(--duration-base) var(--ease-standard);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  padding: 0;
 }
 
 .tarjeta-restaurante:hover {
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
-  border-color: var(--color-secondary);
+  transform: translateY(-2px);
+}
+
+.tarjeta-restaurante-imagen {
+  height: 140px;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+
+.tarjeta-restaurante-imagen img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tarjeta-restaurante-cuerpo {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .tarjeta-restaurante h2 {
@@ -242,11 +278,23 @@ onMounted(async () => {
   color: var(--color-secondary);
 }
 
+.grid-restaurantes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 560px) {
+  .grid-restaurantes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .tarjeta-skeleton {
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: var(--space-6);
+  padding: var(--space-5);
 }
 
 .estado-vacio {

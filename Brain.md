@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Segunda corrección: cambiar tokens no es reestructurar si el layout queda igual
+Después de mergear la corrección anterior, el usuario probó en el navegador y señaló, con razón, que el login y el listado de restaurantes se veían "exactamente igual". Diagnóstico correcto: la pasada anterior reescribió `design-system.css` de fondo pero dejó la COMPOSICIÓN de cada página intacta (misma tarjeta centrada en login, misma grilla de tarjetas de texto uniformes en el listado) — cambiar radios/sombras/tipografía sin tocar el layout es indistinguible a simple vista.
+
+- **Login/Registro**: de tarjeta centrada a **split-screen real** — panel izquierdo oscuro con gradiente indigo + marca + lista de features (glass), panel derecho con el formulario sobre fondo sólido. Colapsa a una sola columna (panel de marca oculto) en mobile.
+- **Listado de restaurantes (cliente)**: de grilla uniforme de tarjetas de solo texto a **bento real con imágenes**. El primer restaurante ocupa una tarjeta destacada a todo el ancho con imagen grande; el resto en grilla de 2 columnas. No hay fotos reales en el dominio (`Restaurante`/`MenuItem` no tienen campo de imagen) — se usa `picsum.photos/seed/restaurante-{id}/...` (determinístico: mismo restaurante, misma foto siempre), siguiendo la guía de no dejar tarjetas sin imagen ni fabricar URLs falsas.
+- Lección para el resto de la sesión: "reestructuración visual" implica tocar composición/layout, no solo el lenguaje de tokens (color/sombra/radio) aplicado sobre la misma estructura de siempre.
+- Build + typecheck limpios, backend sin tocar (53/53). Probado en vivo: login split-screen renderiza correcto, imágenes de picsum cargan en el bento del listado de restaurantes.
+
 ### [2026-07-30] Corrección: la reestructuración visual anterior fue insuficiente — reescritura real, no parches
 El usuario rechazó con fuerza el primer intento de "base Linear/Stripe + Bento + Soft UI + Glass" — ese pase solo agregó tokens nuevos (sombras soft-UI, clase glass) *encima* del sistema "Epicurean" viejo (mismo `--radius-xl: 1.5rem`, misma marca "Epicurean" hardcodeada en varios headers, mismas variables `--color-surface-container-*` heredadas de la línea de diseño anterior). Pidió explícitamente borrar y reconstruir con pensamiento fresco, no un cambio de color arriba de lo mismo.
 
