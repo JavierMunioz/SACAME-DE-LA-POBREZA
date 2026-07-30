@@ -128,7 +128,7 @@ async function enviar() {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary-500);
+  background: var(--color-primary);
   color: white;
   font-family: var(--font-display);
   font-weight: 700;
@@ -193,7 +193,7 @@ async function enviar() {
 }
 
 .link-login a {
-  color: var(--color-primary-600);
+  color: var(--color-secondary);
   font-weight: 500;
   text-decoration: none;
 }

@@ -45,14 +45,16 @@ def generar_factura(
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
 
-    # Solo se factura lo confirmado (ya en cocina) y que todavía no esté en
-    # otra factura. Lo pendiente no cuenta: no se le puede cobrar al cliente
-    # algo que la cocina ni recibió.
+    # Se factura todo lo que ya pasó por cocina (confirmado, preparando o
+    # listo) y que todavía no esté en otra factura. Lo pendiente no cuenta:
+    # no se le puede cobrar al cliente algo que la cocina ni recibió.
     pedidos = (
         db.query(Pedido)
         .filter(
             Pedido.mesa_id == mesa_id,
-            Pedido.estado == EstadoPedido.CONFIRMADO,
+            Pedido.estado.in_(
+                [EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO]
+            ),
             Pedido.factura_id.is_(None),
         )
         .all()

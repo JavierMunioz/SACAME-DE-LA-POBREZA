@@ -1,5 +1,5 @@
-import '@fontsource-variable/outfit'
-import '@fontsource-variable/inter'
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 import 'element-plus/dist/index.css'
 // Va después de Element Plus a propósito: pisa sus --el-* con nuestros
 // tokens (mismo :root, misma especificidad, gana el que carga último).

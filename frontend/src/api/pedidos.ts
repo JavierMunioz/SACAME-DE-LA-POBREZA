@@ -20,7 +20,7 @@ export interface Pedido {
   mesa_id: number
   mesa_numero: number
   cliente_id: number | null
-  estado: 'pendiente' | 'confirmado' | 'cancelado' | 'entregado'
+  estado: 'pendiente' | 'confirmado' | 'preparando' | 'listo' | 'cancelado' | 'entregado'
   created_at: string
   confirmado_at: string | null
   items: ItemPedido[]
@@ -43,5 +43,15 @@ export async function confirmarPedido(pedidoId: number): Promise<Pedido> {
 
 export async function cancelarPedido(pedidoId: number): Promise<Pedido> {
   const { data } = await api.post<Pedido>(`/pedidos/${pedidoId}/cancelar`)
+  return data
+}
+
+export async function marcarPreparando(pedidoId: number): Promise<Pedido> {
+  const { data } = await api.post<Pedido>(`/pedidos/${pedidoId}/marcar-preparando`)
+  return data
+}
+
+export async function marcarListo(pedidoId: number): Promise<Pedido> {
+  const { data } = await api.post<Pedido>(`/pedidos/${pedidoId}/marcar-listo`)
   return data
 }

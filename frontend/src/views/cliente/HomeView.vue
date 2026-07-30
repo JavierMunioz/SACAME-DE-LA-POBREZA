@@ -123,7 +123,7 @@ onMounted(async () => {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary-500);
+  background: var(--color-primary);
   color: white;
   font-family: var(--font-display);
   font-weight: 700;
@@ -211,7 +211,7 @@ onMounted(async () => {
 
 .tarjeta-restaurante:hover {
   box-shadow: var(--shadow-md);
-  border-color: var(--color-primary-500);
+  border-color: var(--color-secondary);
 }
 
 .tarjeta-restaurante h2 {
@@ -228,7 +228,7 @@ onMounted(async () => {
   margin-top: var(--space-2);
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--color-primary-600);
+  color: var(--color-secondary);
 }
 
 .tarjeta-skeleton {

@@ -10,6 +10,8 @@ from app.core.database import Base
 class EstadoPedido(str, enum.Enum):
     PENDIENTE = "pendiente"
     CONFIRMADO = "confirmado"
+    PREPARANDO = "preparando"
+    LISTO = "listo"
     CANCELADO = "cancelado"
     ENTREGADO = "entregado"
 

@@ -56,7 +56,21 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
-### [2026-07-30] Pedido sin cuenta (guest checkout) + rediseño completo del design system
+### [2026-07-30] Pivot de design system: de la paleta esmeralda propia a "Epicurean" (export de Google Stitch)
+El usuario rechazó el rediseño esmeralda de la entrada anterior ("un asko diseñando") y proveyó su propia línea de diseño: un export de Google Stitch (`stitch_gastroflow_os.zip`) con un `DESIGN.md` (tokens YAML + prosa, sistema "Epicurean System") y 4 mockups HTML/PNG (admin dashboard, KDS, comanda mesero, menú cliente mobile). Se abandonó la paleta esmeralda propia y se reconstruyó el design system para calzar exacto con esos tokens, reusando la arquitectura funcional ya construida.
+
+- **Paleta:** negro/"Modern Charcoal" `#18181b` como primario (botones, marca, texto de alta jerarquía) + "Gastro Indigo" `#4f46e5` como acento funcional único (links, hover, foco, badges activos). Nada de verde esmeralda ni beige.
+- **Tipografía:** `Geist Variable` (antes Outfit) + `Geist Mono Variable` (nuevo, para números de orden/precios/reloj — alineación vertical perfecta en tablas).
+- **Tokens:** radios (`sm:.5rem md:.75rem lg:1rem xl:1.5rem full`), sombras (`--shadow-sm/md/lg` con valores exactos del DESIGN.md), espaciado en escala de 4px, sidebar fijo de 280px.
+- **Componente nuevo:** `AppSidebar.vue` — sidebar reusable (280px, logo negro con ícono `KnifeFork`, footer con salir) usado en admin y mesero. Cocina NO lleva sidebar (KDS full-width, fiel al mockup).
+- **Feature real agregada (no cosmética):** el mockup de KDS mostraba estados intermedios de cocina que no existían (`EstadoPedido` solo tenía pendiente→confirmado→entregado). Se agregó `PREPARANDO` y `LISTO` de verdad: migración Alembic (`ALTER TYPE ... ADD VALUE`, no se puede hacer downgrade de un enum en Postgres), dos endpoints nuevos (`marcar-preparando`, `marcar-listo`, ambos 409 si el estado previo no es el esperado), filtro de cocina por `estado IN (confirmado, preparando, listo)`, y facturación ahora acepta pedidos en cualquiera de esos 3 estados (antes solo `confirmado`). 5 tests nuevos en `test_fase6_kds.py`, suite completa 37/37.
+- **Qué se dejó fuera a propósito (aunque el mockup lo mostraba):** la vista de mesero NO se convirtió en un mapa de mesas literal (requeriría un concepto nuevo de "estado de mesa" persistente que no existe en el dominio — hoy solo `Pedido.estado` existe, no hay máquina de estados por mesa). Tampoco se fabricaron fotos de platos, categorías de menú, ni flag de "especial del chef" (el modelo `MenuItem` no tiene esos campos). Se aplicó el lenguaje visual del mockup a la estructura de datos real, no al revés.
+- **Gotcha de credenciales de prueba:** para probar en navegador real se resetearon las contraseñas de las cuentas seed (`admin@sacame.dev`, `mesero1@sacame.dev`, `cocina1@sacame.dev`) a `Test1234!` vía script directo con `hash_password` — no hay endpoint de reset, es solo para desarrollo local.
+- Probado end-to-end en navegador real: login admin (sidebar + personal + QR), cocina (click real Preparando→Listo, contador de footer actualiza, toast de "mesa lista"), mesero (ve el pedido como "LISTO PARA SERVIR" con el badge correcto), y guest checkout completo (escaneo QR sin cuenta → carrito → pedido enviado → verificado en Postgres `cliente_id = NULL`).
+- Recordatorio de infraestructura (ya documentado antes, se repitió el error en esta sesión): el frontend por default apunta a `VITE_API_BASE_URL=http://localhost:8001`, no 8000 — arrancar el backend en el puerto equivocado da "Email o contraseña incorrectos" en vez de un error de red claro, porque el login falla silenciosamente contra un backend que no es el correcto.
+- Próximo paso: mergear PR (retoma el mismo PR #13, ahora con el pivot de paleta) y seguir con lo que quede del roadmap original si el usuario lo pide.
+
+### [2026-07-30] Pedido sin cuenta (guest checkout) + rediseño completo del design system (obsoleto, paleta reemplazada — ver entrada de arriba)
 Esto no es una fase del roadmap original — pedido directo del usuario tras probar el MVP: (1) bug real, no se podía pedir sin crear cuenta; (2) el look visual era "horrible", pidió un rediseño a nivel Stripe/Linear/Notion/Toast POS con un brief extenso de Principal Product Designer.
 
 **Guest checkout (backend):**

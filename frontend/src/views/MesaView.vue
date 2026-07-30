@@ -263,7 +263,7 @@ onMounted(cargar)
 
 .banner-exito {
   background: var(--color-success-bg);
-  color: var(--color-primary-700);
+  color: var(--color-success-text);
 }
 
 .banner-icono {
@@ -272,7 +272,7 @@ onMounted(cargar)
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  background: var(--color-primary-500);
+  background: var(--color-success);
   color: white;
   font-size: 0.8rem;
   flex-shrink: 0;
@@ -352,17 +352,17 @@ onMounted(cargar)
 }
 
 .boton-stepper:not(:disabled):hover {
-  border-color: var(--color-primary-500);
+  border-color: var(--color-secondary);
 }
 
 .boton-stepper-primario {
-  background: var(--color-primary-500);
-  border-color: var(--color-primary-500);
+  background: var(--color-secondary);
+  border-color: var(--color-secondary);
   color: white;
 }
 
 .boton-stepper-primario:hover {
-  background: var(--color-primary-600);
+  background: var(--color-secondary-hover);
 }
 
 .cantidad {

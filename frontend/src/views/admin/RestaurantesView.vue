@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Grid, Plus } from '@element-plus/icons-vue'
 import {
   crearRestaurante,
   listarRestaurantes,
@@ -9,6 +10,7 @@ import {
   type Restaurante,
 } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
+import AppSidebar from '../../components/AppSidebar.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -80,44 +82,56 @@ onMounted(cargar)
 </script>
 
 <template>
-  <div class="pagina">
-    <header class="encabezado">
-      <div class="marca">
-        <span class="marca-icono">S</span>
+  <div class="layout">
+    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+      <template #nav>
+        <span class="nav-item nav-item--activo">
+          <el-icon :size="18"><Grid /></el-icon>
+          <span>Restaurantes</span>
+        </span>
+      </template>
+      <template #accion-principal>
+        <button type="button" class="boton-primario-sidebar" @click="abrirDialogo">
+          <el-icon :size="16"><Plus /></el-icon>
+          <span>Nuevo restaurante</span>
+        </button>
+      </template>
+    </AppSidebar>
+
+    <main class="contenido-principal">
+      <header class="encabezado">
         <div>
           <h1>Restaurantes</h1>
-          <p class="rol">{{ auth.usuario?.nombre }} · administrador general</p>
+          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
         </div>
-      </div>
-      <div class="acciones">
-        <el-button type="primary" @click="abrirDialogo">Nuevo restaurante</el-button>
-        <el-button @click="cerrarSesion">Salir</el-button>
-      </div>
-    </header>
+      </header>
 
-    <main class="contenido">
-      <div v-if="cargando" class="grid-restaurantes">
-        <el-skeleton v-for="i in 3" :key="i" animated :rows="2" class="tarjeta-skeleton" />
-      </div>
+      <div class="contenido">
+        <div v-if="cargando" class="grid-restaurantes">
+          <el-skeleton v-for="i in 3" :key="i" animated :rows="2" class="tarjeta-skeleton" />
+        </div>
 
-      <div v-else-if="restaurantes.length === 0" class="estado-vacio">
-        <p class="estado-vacio-titulo">Todavía no hay restaurantes</p>
-        <p class="estado-vacio-texto">Creá el primero para empezar a dar de alta mesas y personal.</p>
-        <el-button type="primary" @click="abrirDialogo">Nuevo restaurante</el-button>
-      </div>
+        <div v-else-if="restaurantes.length === 0" class="estado-vacio">
+          <p class="estado-vacio-titulo">Todavía no hay restaurantes</p>
+          <p class="estado-vacio-texto">
+            Creá el primero para empezar a dar de alta mesas y personal.
+          </p>
+          <el-button type="primary" @click="abrirDialogo">Nuevo restaurante</el-button>
+        </div>
 
-      <div v-else class="grid-restaurantes">
-        <button
-          v-for="r in restaurantes"
-          :key="r.id"
-          type="button"
-          class="tarjeta-restaurante"
-          @click="irADetalle(r.id)"
-        >
-          <h2>{{ r.nombre }}</h2>
-          <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
-          <p class="fecha">Creado el {{ new Date(r.created_at).toLocaleDateString('es-CO') }}</p>
-        </button>
+        <div v-else class="grid-restaurantes">
+          <button
+            v-for="r in restaurantes"
+            :key="r.id"
+            type="button"
+            class="tarjeta-restaurante"
+            @click="irADetalle(r.id)"
+          >
+            <h2>{{ r.nombre }}</h2>
+            <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
+            <p class="fecha">Creado el {{ new Date(r.created_at).toLocaleDateString('es-CO') }}</p>
+          </button>
+        </div>
       </div>
     </main>
 
@@ -151,62 +165,88 @@ onMounted(cargar)
 </template>
 
 <style scoped>
-.pagina {
+.layout {
+  min-height: 100dvh;
+}
+
+.contenido-principal {
+  margin-left: var(--sidebar-width);
   min-height: 100dvh;
 }
 
 .encabezado {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
+  padding: var(--gutter);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.marca {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.marca-icono {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary-500);
-  color: white;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.marca h1 {
-  font-size: 1.1rem;
-}
-
-.rol {
-  font-size: 0.8rem;
+.subtitulo {
   color: var(--text-tertiary);
-}
-
-.acciones {
-  display: flex;
-  gap: var(--space-3);
+  font-size: 0.85rem;
 }
 
 .contenido {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  max-width: 1200px;
+  padding: var(--gutter);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  position: relative;
+}
+
+.nav-item--activo {
+  background: var(--color-surface-container-high);
+  color: var(--color-secondary);
+}
+
+.nav-item--activo::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  width: 4px;
+  height: 24px;
+  background: var(--color-secondary);
+  border-radius: 0 4px 4px 0;
+}
+
+.boton-primario-sidebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.boton-primario-sidebar:hover {
+  opacity: 0.9;
 }
 
 .grid-restaurantes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-4);
+  gap: var(--gutter);
 }
 
 .tarjeta-skeleton {
@@ -249,7 +289,7 @@ onMounted(cargar)
 
 .tarjeta-restaurante:hover {
   box-shadow: var(--shadow-md);
-  border-color: var(--color-primary-500);
+  border-color: var(--color-secondary);
 }
 
 .tarjeta-restaurante h2 {

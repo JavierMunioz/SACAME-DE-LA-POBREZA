@@ -2,9 +2,11 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Tickets } from '@element-plus/icons-vue'
 import { cancelarPedido, confirmarPedido, listarPedidos, type Pedido } from '../../api/pedidos'
 import { generarFactura, type Factura } from '../../api/facturas'
 import { useAuthStore } from '../../stores/auth'
+import AppSidebar from '../../components/AppSidebar.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
 // por polling cada 5s, simple y suficiente para el volumen de un MVP.
@@ -23,20 +25,30 @@ async function cargar() {
   cargando.value = false
 }
 
-// La factura cierra los pedidos confirmados (pasan a "entregado"); una vez
+const ESTADOS_ACTIVOS = ['pendiente', 'confirmado', 'preparando', 'listo']
+const ESTADOS_EN_COCINA = ['confirmado', 'preparando', 'listo']
+
+// La factura cierra los pedidos en curso (pasan a "entregado"); una vez
 // facturados dejan de ser accionables, no tiene sentido seguir mostrándolos
 // en la comanda activa.
 const pedidosActivos = computed(() =>
-  pedidos.value.filter((p) => p.estado === 'pendiente' || p.estado === 'confirmado'),
+  pedidos.value.filter((p) => ESTADOS_ACTIVOS.includes(p.estado)),
 )
 
 const mesasParaCerrar = computed(() => {
   const vistas = new Map<number, number>()
   for (const p of pedidosActivos.value) {
-    if (p.estado === 'confirmado') vistas.set(p.mesa_id, p.mesa_numero)
+    if (ESTADOS_EN_COCINA.includes(p.estado)) vistas.set(p.mesa_id, p.mesa_numero)
   }
   return [...vistas.entries()].map(([mesa_id, mesa_numero]) => ({ mesa_id, mesa_numero }))
 })
+
+const etiquetaEstado: Record<string, string> = {
+  pendiente: 'Pendiente',
+  confirmado: 'En cocina',
+  preparando: 'Preparando',
+  listo: 'Listo para servir',
+}
 
 async function confirmar(pedido: Pedido) {
   procesando.value = pedido.id
@@ -114,83 +126,90 @@ onUnmounted(() => clearInterval(intervalo))
 </script>
 
 <template>
-  <div class="pagina">
-    <header class="encabezado">
-      <div class="marca">
-        <span class="marca-icono">S</span>
+  <div class="layout">
+    <AppSidebar subtitulo="Comanda" @salir="cerrarSesion">
+      <template #nav>
+        <span class="nav-item nav-item--activo">
+          <el-icon :size="18"><Tickets /></el-icon>
+          <span>Pedidos</span>
+        </span>
+      </template>
+    </AppSidebar>
+
+    <main class="contenido-principal">
+      <header class="encabezado">
         <div>
           <h1>Comanda</h1>
-          <p class="rol">{{ auth.usuario?.nombre }} · mesero</p>
+          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
         </div>
-      </div>
-      <el-button @click="cerrarSesion">Salir</el-button>
-    </header>
+      </header>
 
-    <main class="contenido">
-      <div v-if="mesasParaCerrar.length > 0" class="franja-cerrar">
-        <span class="franja-etiqueta">Listas para cerrar</span>
-        <div class="franja-botones">
-          <button
-            v-for="mesa in mesasParaCerrar"
-            :key="mesa.mesa_id"
-            type="button"
-            class="chip-cerrar"
-            @click="abrirDialogoFactura(mesa)"
+      <div class="contenido">
+        <div v-if="mesasParaCerrar.length > 0" class="franja-cerrar">
+          <span class="franja-etiqueta">Listas para cerrar</span>
+          <div class="franja-botones">
+            <button
+              v-for="mesa in mesasParaCerrar"
+              :key="mesa.mesa_id"
+              type="button"
+              class="chip-cerrar"
+              @click="abrirDialogoFactura(mesa)"
+            >
+              Mesa {{ mesa.mesa_numero }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="cargando" class="grid-pedidos">
+          <el-skeleton v-for="i in 3" :key="i" animated :rows="3" class="tarjeta-skeleton" />
+        </div>
+
+        <div v-else-if="pedidosActivos.length === 0" class="estado-vacio">
+          <p class="estado-vacio-titulo">Sin pedidos por ahora</p>
+          <p class="estado-vacio-texto">Los pedidos nuevos aparecen acá apenas entran.</p>
+        </div>
+
+        <div v-else class="grid-pedidos">
+          <article
+            v-for="pedido in pedidosActivos"
+            :key="pedido.id"
+            class="tarjeta-pedido"
+            :class="`tarjeta-pedido--${pedido.estado}`"
           >
-            Mesa {{ mesa.mesa_numero }}
-          </button>
+            <div class="cabecera-pedido">
+              <span class="mesa">Mesa {{ pedido.mesa_numero }}</span>
+              <span class="badge-estado" :class="`badge-estado--${pedido.estado}`">
+                {{ etiquetaEstado[pedido.estado] }}
+              </span>
+            </div>
+            <ul class="items-pedido">
+              <li v-for="item in pedido.items" :key="item.id">
+                <span class="cantidad-item">{{ item.cantidad }}×</span> {{ item.menu_item_nombre }}
+                <span v-if="item.observaciones" class="observaciones">{{ item.observaciones }}</span>
+              </li>
+            </ul>
+            <div v-if="pedido.estado === 'pendiente'" class="acciones-pedido">
+              <el-button
+                plain
+                size="large"
+                :loading="procesando === pedido.id"
+                class="boton-accion"
+                @click="cancelar(pedido)"
+              >
+                Cancelar
+              </el-button>
+              <el-button
+                type="primary"
+                size="large"
+                :loading="procesando === pedido.id"
+                class="boton-accion"
+                @click="confirmar(pedido)"
+              >
+                Confirmar
+              </el-button>
+            </div>
+          </article>
         </div>
-      </div>
-
-      <div v-if="cargando" class="grid-pedidos">
-        <el-skeleton v-for="i in 3" :key="i" animated :rows="3" class="tarjeta-skeleton" />
-      </div>
-
-      <div v-else-if="pedidosActivos.length === 0" class="estado-vacio">
-        <p class="estado-vacio-titulo">Sin pedidos por ahora</p>
-        <p class="estado-vacio-texto">Los pedidos nuevos aparecen acá apenas entran.</p>
-      </div>
-
-      <div v-else class="grid-pedidos">
-        <article
-          v-for="pedido in pedidosActivos"
-          :key="pedido.id"
-          class="tarjeta-pedido"
-          :class="`tarjeta-pedido--${pedido.estado}`"
-        >
-          <div class="cabecera-pedido">
-            <span class="mesa">Mesa {{ pedido.mesa_numero }}</span>
-            <span class="badge-estado" :class="`badge-estado--${pedido.estado}`">
-              {{ pedido.estado === 'confirmado' ? 'En cocina' : 'Pendiente' }}
-            </span>
-          </div>
-          <ul class="items-pedido">
-            <li v-for="item in pedido.items" :key="item.id">
-              <span class="cantidad-item">{{ item.cantidad }}×</span> {{ item.menu_item_nombre }}
-              <span v-if="item.observaciones" class="observaciones">{{ item.observaciones }}</span>
-            </li>
-          </ul>
-          <div v-if="pedido.estado === 'pendiente'" class="acciones-pedido">
-            <el-button
-              plain
-              size="large"
-              :loading="procesando === pedido.id"
-              class="boton-accion"
-              @click="cancelar(pedido)"
-            >
-              Cancelar
-            </el-button>
-            <el-button
-              type="primary"
-              size="large"
-              :loading="procesando === pedido.id"
-              class="boton-accion"
-              @click="confirmar(pedido)"
-            >
-              Confirmar
-            </el-button>
-          </div>
-        </article>
       </div>
     </main>
 
@@ -218,20 +237,20 @@ onUnmounted(() => clearInterval(intervalo))
         <ul class="voucher-items">
           <li v-for="item in voucher.items" :key="item.id">
             <span>{{ item.cantidad }}× {{ item.menu_item_nombre }}</span>
-            <span>${{ (Number(item.precio_unitario) * item.cantidad).toLocaleString('es-CO') }}</span>
+            <span class="font-mono">${{ (Number(item.precio_unitario) * item.cantidad).toLocaleString('es-CO') }}</span>
           </li>
         </ul>
         <div class="voucher-linea">
           <span>Subtotal</span>
-          <span>${{ Number(voucher.subtotal).toLocaleString('es-CO') }}</span>
+          <span class="font-mono">${{ Number(voucher.subtotal).toLocaleString('es-CO') }}</span>
         </div>
         <div v-if="voucher.incluye_propina" class="voucher-linea">
           <span>Propina</span>
-          <span>${{ Number(voucher.propina).toLocaleString('es-CO') }}</span>
+          <span class="font-mono">${{ Number(voucher.propina).toLocaleString('es-CO') }}</span>
         </div>
         <div class="voucher-linea voucher-total">
           <span>Total</span>
-          <span>${{ Number(voucher.total).toLocaleString('es-CO') }}</span>
+          <span class="font-mono">${{ Number(voucher.total).toLocaleString('es-CO') }}</span>
         </div>
         <el-button disabled class="boton-factura-electronica">Factura electrónica</el-button>
       </div>
@@ -244,51 +263,60 @@ onUnmounted(() => clearInterval(intervalo))
 </template>
 
 <style scoped>
-.pagina {
+.layout {
+  min-height: 100dvh;
+}
+
+.contenido-principal {
+  margin-left: var(--sidebar-width);
   min-height: 100dvh;
 }
 
 .encabezado {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
+  padding: var(--gutter);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.marca {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.marca-icono {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary-500);
-  color: white;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.marca h1 {
-  font-size: 1.1rem;
-}
-
-.rol {
-  font-size: 0.8rem;
+.subtitulo {
   color: var(--text-tertiary);
+  font-size: 0.85rem;
 }
 
 .contenido {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  max-width: 1200px;
+  padding: var(--gutter);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  position: relative;
+}
+
+.nav-item--activo {
+  background: var(--color-surface-container-high);
+  color: var(--color-secondary);
+}
+
+.nav-item--activo::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  width: 4px;
+  height: 24px;
+  background: var(--color-secondary);
+  border-radius: 0 4px 4px 0;
 }
 
 .franja-cerrar {
@@ -296,16 +324,16 @@ onUnmounted(() => clearInterval(intervalo))
   align-items: center;
   gap: var(--space-4);
   flex-wrap: wrap;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--gutter);
   padding: var(--space-4) var(--space-5);
-  background: var(--color-primary-50);
+  background: var(--color-secondary-soft);
   border-radius: var(--radius-md);
 }
 
 .franja-etiqueta {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-primary-700);
+  color: var(--color-secondary-hover);
 }
 
 .franja-botones {
@@ -315,9 +343,9 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .chip-cerrar {
-  border: 1px solid var(--color-primary-500);
+  border: 1px solid var(--color-secondary);
   background: var(--surface-raised);
-  color: var(--color-primary-700);
+  color: var(--color-secondary);
   font-weight: 600;
   font-size: 0.85rem;
   padding: var(--space-2) var(--space-4);
@@ -327,7 +355,7 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .chip-cerrar:hover {
-  background: var(--color-primary-100);
+  background: var(--color-secondary-soft);
 }
 
 .grid-pedidos {
@@ -363,13 +391,18 @@ onUnmounted(() => clearInterval(intervalo))
 .tarjeta-pedido {
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--color-warning);
+  border-left: 4px solid var(--color-warning);
   border-radius: var(--radius-md);
   padding: var(--space-5);
   box-shadow: var(--shadow-sm);
 }
 
-.tarjeta-pedido--confirmado {
+.tarjeta-pedido--confirmado,
+.tarjeta-pedido--preparando {
+  border-left-color: var(--color-secondary);
+}
+
+.tarjeta-pedido--listo {
   border-left-color: var(--color-success);
 }
 
@@ -386,20 +419,28 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .badge-estado {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .badge-estado--pendiente {
   background: var(--color-warning-bg);
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
-.badge-estado--confirmado {
+.badge-estado--confirmado,
+.badge-estado--preparando {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary-hover);
+}
+
+.badge-estado--listo {
   background: var(--color-success-bg);
-  color: var(--color-primary-700);
+  color: var(--color-success-text);
 }
 
 .items-pedido {
@@ -419,7 +460,7 @@ onUnmounted(() => clearInterval(intervalo))
 
 .observaciones {
   display: block;
-  color: var(--color-warning);
+  color: var(--color-warning-text);
   font-size: 0.825rem;
 }
 

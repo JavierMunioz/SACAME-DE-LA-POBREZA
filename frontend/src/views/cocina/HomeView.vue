@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { listarPedidos, type Pedido } from '../../api/pedidos'
+import { ElMessage } from 'element-plus'
+import { Connection, KnifeFork, SwitchButton, Warning } from '@element-plus/icons-vue'
+import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
 
 // Mismo enfoque que la comanda del mesero: polling simple, sin
 // WebSockets todavía (ver Brain.md).
 const INTERVALO_POLLING_MS = 5000
-// El reloj de "tiempo en espera" se refresca aparte y más seguido: no
-// depende de la red, solo recalcula contra la hora actual.
-const INTERVALO_RELOJ_MS = 15000
+// El reloj visible y el "tiempo en espera" se refrescan cada segundo: no
+// dependen de la red, solo recalculan contra la hora actual.
+const INTERVALO_RELOJ_MS = 1000
 
 const pedidos = ref<Pedido[]>([])
 const cargando = ref(true)
+const procesando = ref<number | null>(null)
 const ahora = ref(Date.now())
 let intervaloPolling: ReturnType<typeof setInterval> | undefined
 let intervaloReloj: ReturnType<typeof setInterval> | undefined
@@ -21,11 +24,15 @@ const router = useRouter()
 const auth = useAuthStore()
 
 async function cargar() {
-  // El backend ya devuelve orden FIFO por hora de confirmación cuando se
-  // filtra por estado=confirmado.
-  pedidos.value = await listarPedidos('confirmado')
+  // Sin filtro de estado: el backend ya sabe que cocina ve por defecto
+  // confirmado+preparando+listo, en orden FIFO por hora de confirmación.
+  pedidos.value = await listarPedidos()
   cargando.value = false
 }
+
+const horaActual = computed(() =>
+  new Date(ahora.value).toLocaleTimeString('es-CO', { hour12: false }),
+)
 
 function minutosEnEspera(pedido: Pedido): number {
   if (!pedido.confirmado_at) return 0
@@ -33,10 +40,42 @@ function minutosEnEspera(pedido: Pedido): number {
 }
 
 function urgencia(pedido: Pedido): 'normal' | 'atencion' | 'urgente' {
+  if (pedido.estado === 'listo') return 'normal'
   const min = minutosEnEspera(pedido)
   if (min >= 20) return 'urgente'
   if (min >= 10) return 'atencion'
   return 'normal'
+}
+
+const ordenesAtrasadas = computed(
+  () => pedidos.value.filter((p) => p.estado !== 'listo' && minutosEnEspera(p) >= 20).length,
+)
+const enPreparacion = computed(() => pedidos.value.filter((p) => p.estado === 'preparando').length)
+const listasParaServir = computed(() => pedidos.value.filter((p) => p.estado === 'listo').length)
+
+async function empezarPreparacion(pedido: Pedido) {
+  procesando.value = pedido.id
+  try {
+    await marcarPreparando(pedido.id)
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo actualizar el pedido')
+  } finally {
+    procesando.value = null
+  }
+}
+
+async function marcarComoListo(pedido: Pedido) {
+  procesando.value = pedido.id
+  try {
+    await marcarListo(pedido.id)
+    ElMessage.success(`Mesa ${pedido.mesa_numero} lista para servir`)
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo actualizar el pedido')
+  } finally {
+    procesando.value = null
+  }
 }
 
 function cerrarSesion() {
@@ -60,14 +99,25 @@ onUnmounted(() => {
 <template>
   <div class="pagina">
     <header class="encabezado">
-      <div class="marca">
-        <span class="marca-icono">S</span>
-        <div>
-          <h1>Cocina</h1>
-          <p class="rol">{{ auth.usuario?.nombre }} · {{ pedidos.length }} en espera</p>
+      <div class="encabezado-izq">
+        <div class="marca-icono">
+          <el-icon :size="18"><KnifeFork /></el-icon>
+        </div>
+        <h1>Epicurean <span class="marca-acento">Cocina</span></h1>
+        <div class="separador" />
+        <div class="reloj">
+          <span class="font-mono">{{ horaActual }}</span>
         </div>
       </div>
-      <el-button @click="cerrarSesion">Salir</el-button>
+      <div class="encabezado-der">
+        <span class="indicador-activo">
+          <span class="punto-verde" />
+          Sistema Operativo
+        </span>
+        <button type="button" class="boton-icono" @click="cerrarSesion">
+          <el-icon :size="18"><SwitchButton /></el-icon>
+        </button>
+      </div>
     </header>
 
     <main class="contenido">
@@ -88,45 +138,94 @@ onUnmounted(() => {
           :class="`tarjeta-comanda--${urgencia(pedido)}`"
         >
           <div class="cabecera-comanda">
-            <span class="orden">#{{ i + 1 }}</span>
-            <span class="mesa">Mesa {{ pedido.mesa_numero }}</span>
-            <span class="tiempo" :class="`tiempo--${urgencia(pedido)}`">
-              {{ minutosEnEspera(pedido) }} min
-            </span>
+            <div>
+              <h2 class="orden">Orden #{{ pedido.id }}</h2>
+              <p class="mesa">Mesa {{ pedido.mesa_numero }}</p>
+            </div>
+            <div class="tiempo" :class="`tiempo--${urgencia(pedido)}`">
+              <el-icon v-if="urgencia(pedido) === 'urgente'" :size="16"><Warning /></el-icon>
+              <span class="font-mono">{{ minutosEnEspera(pedido) }}:00</span>
+            </div>
           </div>
           <ul class="items-comanda">
             <li v-for="item in pedido.items" :key="item.id">
-              <div class="fila-item">
-                <span class="cantidad-item">{{ item.cantidad }}×</span>
-                <span class="nombre-item">{{ item.menu_item_nombre }}</span>
-              </div>
-              <p v-if="item.observaciones" class="observaciones">{{ item.observaciones }}</p>
+              <span class="cantidad-item">{{ item.cantidad }}×</span>
+              <span class="nombre-item">{{ item.menu_item_nombre }}</span>
             </li>
           </ul>
+          <div v-if="pedido.items.some((i) => i.observaciones)" class="observaciones-caja">
+            <span class="observaciones-etiqueta">Observaciones</span>
+            <p v-for="item in pedido.items.filter((i) => i.observaciones)" :key="item.id">
+              "{{ item.observaciones }}"
+            </p>
+          </div>
+
+          <div class="acciones-comanda">
+            <el-button
+              v-if="pedido.estado === 'confirmado'"
+              class="boton-accion boton-preparando"
+              :loading="procesando === pedido.id"
+              @click="empezarPreparacion(pedido)"
+            >
+              Preparando
+            </el-button>
+            <el-button
+              v-else-if="pedido.estado === 'preparando'"
+              class="boton-accion boton-listo"
+              :loading="procesando === pedido.id"
+              @click="marcarComoListo(pedido)"
+            >
+              Listo
+            </el-button>
+            <div v-else class="aviso-listo">Esperando al mesero</div>
+          </div>
         </article>
       </div>
     </main>
+
+    <footer class="pie">
+      <div class="pie-contadores">
+        <span class="pie-item">
+          <span class="punto punto-rojo" /> {{ ordenesAtrasadas }} Orden{{ ordenesAtrasadas === 1 ? '' : 'es' }} Atrasada{{ ordenesAtrasadas === 1 ? '' : 's' }}
+        </span>
+        <span class="pie-item">
+          <span class="punto punto-naranja" /> {{ enPreparacion }} En Preparación
+        </span>
+        <span class="pie-item">
+          <span class="punto punto-verde-pie" /> {{ listasParaServir }} Listas para servir
+        </span>
+      </div>
+      <div class="pie-item">
+        <el-icon :size="14"><Connection /></el-icon>
+        Conectado a Servidor Central
+      </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .pagina {
   min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 .encabezado {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
+  padding: 0 var(--gutter);
+  height: 64px;
+  background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
 }
 
-.marca {
+.encabezado-izq {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .marca-icono {
@@ -135,26 +234,78 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary-500);
+  background: var(--color-primary);
   color: white;
-  font-family: var(--font-display);
+}
+
+.encabezado h1 {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.marca-acento {
+  color: var(--color-secondary);
   font-weight: 700;
-  font-size: 0.95rem;
 }
 
-.marca h1 {
-  font-size: 1.1rem;
+.separador {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle);
 }
 
-.rol {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
+.reloj {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+.encabezado-der {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.indicador-activo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.punto-verde {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-success);
+}
+
+.boton-icono {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.boton-icono:hover {
+  background: var(--color-surface-container-high);
 }
 
 .contenido {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--gutter);
 }
 
 .grid-comandas {
@@ -189,97 +340,201 @@ onUnmounted(() => {
 
 /* Tarjetas grandes, pensadas para pantalla táctil vista desde lejos. */
 .tarjeta-comanda {
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
-  border-top: 4px solid var(--color-neutral-300);
-  border-radius: var(--radius-md);
-  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   box-shadow: var(--shadow-md);
-}
-
-.tarjeta-comanda--atencion {
-  border-top-color: var(--color-warning);
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 
 .tarjeta-comanda--urgente {
-  border-top-color: var(--color-danger);
+  border: 2px solid var(--color-danger);
+  background: var(--color-danger-bg);
 }
 
 .cabecera-comanda {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--color-surface-container-low);
+}
+
+.tarjeta-comanda--urgente .cabecera-comanda {
+  background: transparent;
+  border-bottom-color: rgba(186, 26, 26, 0.2);
 }
 
 .orden {
-  color: var(--text-tertiary);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1.1rem;
 }
 
 .mesa {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.35rem;
-  flex: 1;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .tiempo {
-  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.9rem;
   font-weight: 700;
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-full);
-  font-variant-numeric: tabular-nums;
-  background: var(--color-neutral-100);
-  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container-highest);
+  color: var(--text-primary);
 }
 
 .tiempo--atencion {
   background: var(--color-warning-bg);
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .tiempo--urgente {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
+  background: var(--color-danger);
+  color: white;
+  animation: pulso 1.6s ease-in-out infinite;
+}
+
+@keyframes pulso {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .items-comanda {
   list-style: none;
-  padding: 0;
+  padding: var(--space-4);
   margin: 0;
+  flex: 1;
 }
 
 .items-comanda li {
-  padding: var(--space-3) 0;
-}
-
-.items-comanda li + li {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.fila-item {
   display: flex;
   gap: var(--space-2);
-  font-size: 1.05rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: var(--space-2) 0;
 }
 
 .cantidad-item {
+  color: var(--text-tertiary);
+}
+
+.observaciones-caja {
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-3);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-sm);
+}
+
+.tarjeta-comanda--urgente .observaciones-caja {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.observaciones-etiqueta {
+  display: block;
+  font-size: 0.7rem;
   font-weight: 700;
-  color: var(--color-primary-600);
-  min-width: 1.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-1);
 }
 
-.nombre-item {
-  font-weight: 500;
-}
-
-.observaciones {
-  margin-top: var(--space-1);
-  margin-left: calc(1.75rem + var(--space-2));
-  color: var(--color-warning);
+.observaciones-caja p {
+  font-style: italic;
   font-size: 0.9rem;
-  font-weight: 500;
+}
+
+.acciones-comanda {
+  padding: var(--space-4);
+  background: var(--color-surface-container-low);
+}
+
+.tarjeta-comanda--urgente .acciones-comanda {
+  background: transparent;
+}
+
+.boton-accion {
+  width: 100%;
+  height: 52px;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  color: white;
+}
+
+.boton-preparando {
+  background: var(--color-warning);
+}
+
+.boton-preparando:hover {
+  background: #d97706;
+  color: white;
+}
+
+.boton-listo {
+  background: var(--color-success);
+}
+
+.boton-listo:hover {
+  background: #15803d;
+  color: white;
+}
+
+.aviso-listo {
+  text-align: center;
+  padding: var(--space-3);
+  font-weight: 600;
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border-radius: var(--radius-sm);
+}
+
+.pie {
+  height: 48px;
+  flex-shrink: 0;
+  background: var(--color-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--gutter);
+  font-size: 0.875rem;
+}
+
+.pie-contadores {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.pie-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.punto {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.punto-rojo {
+  background: #ef4444;
+}
+
+.punto-naranja {
+  background: var(--color-warning);
+}
+
+.punto-verde-pie {
+  background: var(--color-success);
 }
 </style>

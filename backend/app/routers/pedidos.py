@@ -100,6 +100,11 @@ def crear_pedido(
     return _pedido_a_out(pedido)
 
 
+# Rango de estados que le pertenece ver a cocina: desde que el mesero
+# confirma hasta que el plato queda listo para servir.
+ESTADOS_COCINA = (EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO)
+
+
 @router.get("", response_model=list[PedidoOut])
 def listar_pedidos(
     estado: EstadoPedido | None = None,
@@ -107,12 +112,19 @@ def listar_pedidos(
     usuario: Usuario = Depends(require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
 ):
     query = db.query(Pedido).join(Mesa).filter(Mesa.restaurante_id == usuario.restaurante_id)
+
     if estado is not None:
         query = query.filter(Pedido.estado == estado)
+        orden = Pedido.confirmado_at if estado in ESTADOS_COCINA else Pedido.created_at
+    elif usuario.rol == Rol.COCINA:
+        # Cocina ve por defecto todo lo que sigue activo en su estación, no
+        # un único estado puntual. Orden FIFO por hora de llegada a cocina
+        # (confirmado_at), no por hora de creación del pedido.
+        query = query.filter(Pedido.estado.in_(ESTADOS_COCINA))
+        orden = Pedido.confirmado_at
+    else:
+        orden = Pedido.created_at
 
-    # Cocina necesita orden FIFO por hora de llegada a cocina (confirmado_at),
-    # no por hora de creación del pedido (ver Readme.md).
-    orden = Pedido.confirmado_at if estado == EstadoPedido.CONFIRMADO else Pedido.created_at
     pedidos = query.order_by(orden).all()
     return [_pedido_a_out(p) for p in pedidos]
 
@@ -128,6 +140,36 @@ def confirmar_pedido(
         raise HTTPException(status.HTTP_409_CONFLICT, "El pedido ya no está pendiente")
     pedido.estado = EstadoPedido.CONFIRMADO
     pedido.confirmado_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-preparando", response_model=PedidoOut)
+def marcar_preparando(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    cocina: Usuario = Depends(require_roles(Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, cocina.restaurante_id)
+    if pedido.estado != EstadoPedido.CONFIRMADO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está confirmado")
+    pedido.estado = EstadoPedido.PREPARANDO
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-listo", response_model=PedidoOut)
+def marcar_listo(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    cocina: Usuario = Depends(require_roles(Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, cocina.restaurante_id)
+    if pedido.estado != EstadoPedido.PREPARANDO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está en preparación")
+    pedido.estado = EstadoPedido.LISTO
     db.commit()
     db.refresh(pedido)
     return _pedido_a_out(pedido)

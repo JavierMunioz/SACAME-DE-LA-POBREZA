@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Grid } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import {
   crearMesa,
@@ -15,6 +16,10 @@ import {
   type RestauranteConMenu,
   type RolPersonal,
 } from '../../api/restaurantes'
+import { useAuthStore } from '../../stores/auth'
+import AppSidebar from '../../components/AppSidebar.vue'
+
+const auth = useAuthStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -129,6 +134,11 @@ function volver() {
   router.push('/admin')
 }
 
+function cerrarSesion() {
+  auth.logout()
+  router.push('/login')
+}
+
 onMounted(cargar)
 onUnmounted(() => {
   Object.values(qrUrls).forEach((u) => URL.revokeObjectURL(u))
@@ -136,16 +146,22 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="pagina">
-    <header class="encabezado-pagina">
-      <button type="button" class="volver" @click="volver">← Restaurantes</button>
-    </header>
+  <div class="layout">
+    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+      <template #nav>
+        <button type="button" class="nav-item" @click="volver">
+          <el-icon :size="18"><Grid /></el-icon>
+          <span>Restaurantes</span>
+        </button>
+      </template>
+    </AppSidebar>
 
+    <main class="contenido-principal">
     <div v-if="cargando" class="contenido">
       <el-skeleton animated :rows="8" />
     </div>
 
-    <main v-else-if="restaurante" class="contenido">
+    <div v-else-if="restaurante" class="contenido">
       <div class="hero-restaurante">
         <div>
           <h1>{{ restaurante.nombre }}</h1>
@@ -202,6 +218,7 @@ onUnmounted(() => {
           </li>
         </ul>
       </section>
+    </div>
     </main>
 
     <el-dialog v-model="dialogoAbierto" title="Nueva mesa" width="360px">
@@ -249,28 +266,34 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.pagina {
+.layout {
   min-height: 100dvh;
 }
 
-.encabezado-pagina {
-  padding: var(--space-4) var(--space-6);
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border-subtle);
+.contenido-principal {
+  margin-left: var(--sidebar-width);
+  min-height: 100dvh;
 }
 
-.volver {
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  padding: 0;
+  width: 100%;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-standard);
 }
 
-.volver:hover {
-  color: var(--text-primary);
+.nav-item:hover {
+  background: var(--color-surface-container);
 }
 
 .contenido {
