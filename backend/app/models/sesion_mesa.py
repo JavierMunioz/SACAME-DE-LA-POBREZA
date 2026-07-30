@@ -29,9 +29,12 @@ class SesionMesa(Base):
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
     nombre_invitado: Mapped[str | None] = mapped_column(String(80), nullable=True)
     reserva_id: Mapped[int | None] = mapped_column(ForeignKey("reservas.id"), nullable=True)
-    # Token opaco que autoriza pedir en esta sesión (dueño y quienes se
-    # suman con el código comparten el mismo token).
+    # Token compartido: lo tienen dueño y quienes se suman con el código.
+    # Autoriza ver/editar el carrito en vivo (WebSocket), NO enviar el
+    # pedido — eso requiere token_dueno, que solo recibe quien abrió la
+    # mesa (nunca se devuelve en /unirse).
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    token_dueno: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     codigo_acceso: Mapped[str] = mapped_column(String(4))
     abierta_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

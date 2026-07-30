@@ -1,9 +1,10 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 
+from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
 from app.core.deps import get_current_user_opcional
 from app.models import EstadoMesa, EstadoReserva, Mesa, Reserva, Rol, SesionMesa, Usuario
@@ -75,9 +76,10 @@ def _sesion_activa(db: Session, mesa_id: int) -> SesionMesa | None:
     )
 
 
-def _sesion_a_out(sesion: SesionMesa, nombre: str) -> SesionMesaOut:
+def _sesion_a_out(sesion: SesionMesa, nombre: str, incluir_token_dueno: bool) -> SesionMesaOut:
     return SesionMesaOut(
         token=sesion.token,
+        token_dueno=sesion.token_dueno if incluir_token_dueno else None,
         codigo_acceso=sesion.codigo_acceso,
         mesa_id=sesion.mesa_id,
         nombre=nombre,
@@ -177,6 +179,7 @@ def ocupar_mesa(
         nombre_invitado=nombre_invitado,
         reserva_id=reserva.id if reserva is not None else None,
         token=secrets.token_urlsafe(32),
+        token_dueno=secrets.token_urlsafe(32),
         codigo_acceso=f"{secrets.randbelow(10000):04d}",
     )
     db.add(sesion)
@@ -185,7 +188,7 @@ def ocupar_mesa(
     db.refresh(sesion)
 
     nombre = usuario.nombre if usuario is not None else nombre_invitado or ""
-    return _sesion_a_out(sesion, nombre)
+    return _sesion_a_out(sesion, nombre, incluir_token_dueno=True)
 
 
 @router.post("/{mesa_id}/unirse", response_model=SesionMesaOut)
@@ -207,4 +210,42 @@ def unirse_a_mesa(
     nombre = (
         sesion.cliente.nombre if sesion.cliente_id is not None else (sesion.nombre_invitado or "")
     )
-    return _sesion_a_out(sesion, nombre)
+    return _sesion_a_out(sesion, nombre, incluir_token_dueno=False)
+
+
+@router.websocket("/{mesa_id}/ws")
+async def carrito_en_vivo(
+    websocket: WebSocket, mesa_id: int, token: str, db: Session = Depends(get_db)
+):
+    """Carrito compartido de la mesa: todos los dispositivos conectados
+    con el mismo `token` de sesión ven y editan el mismo carrito en vivo.
+    Enviar el pedido sigue siendo un POST /pedidos aparte, autorizado con
+    `token_dueno` — este canal solo sincroniza qué hay en el carrito."""
+    sesion = (
+        db.query(SesionMesa)
+        .filter(
+            SesionMesa.mesa_id == mesa_id,
+            SesionMesa.token == token,
+            SesionMesa.cerrada_at.is_(None),
+        )
+        .first()
+    )
+
+    if sesion is None:
+        await websocket.close(code=4401)
+        return
+
+    await gestor_carritos.conectar(mesa_id, websocket)
+    try:
+        while True:
+            datos = await websocket.receive_json()
+            if datos.get("accion") == "set_item":
+                menu_item_id = datos.get("menu_item_id")
+                cantidad = datos.get("cantidad")
+                if not isinstance(menu_item_id, int) or not isinstance(cantidad, int):
+                    continue
+                await gestor_carritos.actualizar_item(
+                    mesa_id, menu_item_id, cantidad, datos.get("observaciones")
+                )
+    except WebSocketDisconnect:
+        gestor_carritos.desconectar(mesa_id, websocket)

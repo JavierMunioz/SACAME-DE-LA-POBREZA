@@ -27,10 +27,13 @@ class MesaOut(BaseModel):
 
 class SesionMesaOut(BaseModel):
     """Lo que recibe el dispositivo que abre o se une a una sesión de mesa.
-    El token autoriza pedir en esta sesión; el código es lo que el dueño
-    de la sesión comparte de palabra con el resto de la mesa."""
+    `token` autoriza ver/editar el carrito en vivo (WebSocket) y lo tienen
+    todos los que se sumaron con el código. `token_dueno` autoriza enviar
+    el pedido y solo lo recibe quien abrió la mesa (null para quien se
+    suma vía /unirse)."""
 
     token: str
+    token_dueno: str | None
     codigo_acceso: str
     mesa_id: int
     nombre: str

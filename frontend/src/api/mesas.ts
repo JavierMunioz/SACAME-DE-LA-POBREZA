@@ -27,9 +27,16 @@ export interface MesaQrInfo {
 
 export interface SesionMesa {
   token: string
+  token_dueno: string | null
   codigo_acceso: string
   mesa_id: number
   nombre: string
+}
+
+export function urlWsCarrito(mesaId: number, token: string): string {
+  const base = api.defaults.baseURL ?? 'http://localhost:8001'
+  const wsBase = base.replace(/^http/, 'ws')
+  return `${wsBase}/mesas/${mesaId}/ws?token=${encodeURIComponent(token)}`
 }
 
 export async function canjearQr(token: string): Promise<MesaQrInfo> {
