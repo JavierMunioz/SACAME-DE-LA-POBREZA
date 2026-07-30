@@ -1,0 +1,207 @@
+/*
+ * Design system — Sacame de la Pobreza
+ *
+ * Un solo acento (esmeralda), grises cálidos neutros, sin negro puro.
+ * Verde también es el estado "confirmado" — mismo verde a propósito,
+ * no dos verdes distintos compitiendo.
+ */
+
+:root {
+  /* ---- Color: acento ---- */
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-500: #10a05f;
+  --color-primary-600: #0d8a51;
+  --color-primary-700: #0a6e40;
+
+  /* ---- Color: neutros cálidos (nunca negro/blanco puro) ---- */
+  --color-neutral-0: #fefefe;
+  --color-neutral-25: #fafaf9;
+  --color-neutral-50: #f5f5f4;
+  --color-neutral-100: #e7e5e4;
+  --color-neutral-200: #d6d3d1;
+  --color-neutral-300: #a8a29e;
+  --color-neutral-400: #78716c;
+  --color-neutral-500: #57534e;
+  --color-neutral-600: #44403c;
+  --color-neutral-700: #2f2b28;
+  --color-neutral-900: #1c1917;
+
+  /* ---- Estados ---- */
+  --color-success: #10a05f;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-info: #2563eb;
+  --color-info-bg: #eff6ff;
+
+  /* ---- Superficie ---- */
+  --surface: var(--color-neutral-0);
+  --surface-sunken: var(--color-neutral-25);
+  --surface-raised: #ffffff;
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-500);
+  --text-tertiary: var(--color-neutral-400);
+  --border-subtle: var(--color-neutral-100);
+  --border-default: var(--color-neutral-200);
+
+  /* ---- Tipografía ---- */
+  --font-display: 'Outfit Variable', 'Outfit', system-ui, sans-serif;
+  --font-body: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* ---- Espaciado (base 4px) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- Radios: un solo sistema, escala suave ---- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* ---- Sombras: tenues, tintadas al neutro tibio, nunca negro puro ---- */
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.06);
+  --shadow-md: 0 4px 12px rgba(28, 25, 23, 0.08), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-lg: 0 12px 32px rgba(28, 25, 23, 0.12), 0 2px 6px rgba(28, 25, 23, 0.06);
+
+  /* ---- Movimiento ---- */
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Reset base ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+/* ---- Tactile feedback: empuje sutil al presionar ---- */
+button,
+.el-button {
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+button:active,
+.el-button:active {
+  transform: scale(0.98);
+}
+
+/* ---- Element Plus retematizado con nuestros tokens ---- */
+:root {
+  --el-color-primary: var(--color-primary-500);
+  --el-color-primary-light-3: var(--color-primary-100);
+  --el-color-primary-light-5: var(--color-primary-100);
+  --el-color-primary-light-9: var(--color-primary-50);
+  --el-color-primary-dark-2: var(--color-primary-700);
+
+  --el-color-success: var(--color-success);
+  --el-color-success-light-9: var(--color-success-bg);
+  --el-color-warning: var(--color-warning);
+  --el-color-warning-light-9: var(--color-warning-bg);
+  --el-color-danger: var(--color-danger);
+  --el-color-danger-light-9: var(--color-danger-bg);
+  --el-color-info: var(--color-info);
+  --el-color-info-light-9: var(--color-info-bg);
+
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-tertiary);
+  --el-border-color: var(--border-default);
+  --el-border-color-light: var(--border-subtle);
+  --el-fill-color-blank: var(--surface-raised);
+  --el-bg-color: var(--surface-raised);
+
+  --el-border-radius-base: var(--radius-sm);
+  --el-border-radius-round: var(--radius-full);
+  --el-font-family: var(--font-body);
+
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow: var(--shadow-md);
+}
+
+.el-button {
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.el-card {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-subtle);
+}
+
+.el-dialog {
+  border-radius: var(--radius-lg);
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 1px var(--border-default) inset;
+}
+
+.el-tag {
+  border-radius: var(--radius-sm);
+  border: none;
+  font-weight: 500;
+}

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user_opcional
 from app.models import EstadoReserva, Mesa, Reserva, Usuario
 from app.schemas.mesa import MesaQrInfo
 from app.schemas.menu import MenuItemOut
@@ -21,7 +21,7 @@ MINUTOS_LLEGADA_ANTICIPADA = 15
 def canjear_qr(
     token: str,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(get_current_user),
+    usuario: Usuario | None = Depends(get_current_user_opcional),
 ):
     mesa = db.query(Mesa).filter(Mesa.qr_token == token).first()
     if mesa is None:
@@ -42,7 +42,7 @@ def canjear_qr(
         ventana_fin = r.inicio + timedelta(minutes=r.duracion_minutos)
         if ventana_inicio <= ahora <= ventana_fin:
             mesa_libre_ahora = False
-            if r.cliente_id == usuario.id:
+            if usuario is not None and r.cliente_id == usuario.id:
                 reserva_propia = r
 
     return MesaQrInfo(

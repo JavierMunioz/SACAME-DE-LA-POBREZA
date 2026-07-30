@@ -19,22 +19,24 @@ const router = createRouter({
       component: () => import('../views/RegistroView.vue'),
     },
     {
+      // Público a propósito: escanear el QR y pedir no debería exigir
+      // cuenta (ver Readme — mesa libre sin reserva se usa sin fricción).
       path: '/mesa/:restauranteId/:mesaId',
       name: 'mesa-qr',
       component: () => import('../views/MesaView.vue'),
-      meta: { requiereAuth: true },
     },
     {
+      // Público: navegar restaurantes y ver el menú no requiere cuenta.
+      // Solo reservar (acción que necesita identidad) pide login, y en
+      // ese momento puntual.
       path: '/cliente',
       name: 'cliente',
       component: () => import('../views/cliente/HomeView.vue'),
-      meta: { rol: 'cliente' as Rol },
     },
     {
       path: '/cliente/restaurantes/:id',
       name: 'cliente-restaurante',
       component: () => import('../views/cliente/RestauranteView.vue'),
-      meta: { rol: 'cliente' as Rol },
     },
     {
       path: '/mesero',
@@ -65,8 +67,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const rolRequerido = to.meta.rol as Rol | undefined
-  const requiereAuth = to.meta.requiereAuth as boolean | undefined
-  if (!rolRequerido && !requiereAuth) return true
+  if (!rolRequerido) return true
 
   const auth = useAuthStore()
   if (!auth.token) {

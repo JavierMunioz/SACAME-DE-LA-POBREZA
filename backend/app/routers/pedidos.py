@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import require_roles
+from app.core.deps import get_current_user_opcional, require_roles
 from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, Usuario
 from app.schemas.pedido import ItemPedidoOut, PedidoCreate, PedidoOut
 
@@ -50,8 +50,14 @@ def _get_pedido_del_restaurante_o_404(db: Session, pedido_id: int, restaurante_i
 def crear_pedido(
     datos: PedidoCreate,
     db: Session = Depends(get_db),
-    cliente: Usuario = Depends(require_roles(Rol.CLIENTE)),
+    usuario: Usuario | None = Depends(get_current_user_opcional),
 ):
+    # Sin cuenta también se puede pedir (ver Readme: mesa libre sin reserva
+    # se puede usar sin fricción). Si hay sesión, tiene que ser un cliente:
+    # mesero/cocina/admin no generan pedidos a través de este endpoint.
+    if usuario is not None and usuario.rol != Rol.CLIENTE:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta acción")
+
     mesa = db.get(Mesa, datos.mesa_id)
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
@@ -72,7 +78,7 @@ def crear_pedido(
             f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
         )
 
-    pedido = Pedido(mesa_id=mesa.id, cliente_id=cliente.id)
+    pedido = Pedido(mesa_id=mesa.id, cliente_id=usuario.id if usuario else None)
     db.add(pedido)
     db.flush()
 
