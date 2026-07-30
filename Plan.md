@@ -5,10 +5,10 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 ---
 
 ## Fase 0 — Setup del proyecto
-- [ ] Repositorio inicial + estructura de carpetas (`backend/`, `frontend/`)
-- [ ] PostgreSQL corriendo local (docker-compose)
-- [ ] FastAPI base + conexión a la base de datos
-- [ ] Vue 3 base + routing por rol
+- [x] Repositorio inicial + estructura de carpetas (`backend/`, `frontend/`)
+- [x] PostgreSQL corriendo local (docker-compose)
+- [x] FastAPI base + conexión a la base de datos
+- [x] Vue 3 base + routing por rol
 
 ## Fase 1 — Modelo de datos y autenticación
 - [ ] Tablas: `restaurantes`, `mesas`, `reservas`, `usuarios`, `pedidos`, `items_pedido`, `menu`, `facturas`
