@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,3 +23,20 @@ class RestauranteOut(BaseModel):
 
 class RestauranteConMenu(RestauranteOut):
     menu: list[MenuItemOut]
+
+
+class PlatoVendidoOut(BaseModel):
+    menu_item_id: int
+    nombre: str
+    cantidad_vendida: int
+    precio: Decimal
+
+
+class EstadisticasRestauranteOut(BaseModel):
+    revenue_hoy: Decimal
+    revenue_ayer: Decimal
+    # None si ayer no facturó nada (no hay base para calcular variación).
+    variacion_pct: float | None
+    mesas_ocupadas: int
+    mesas_total: int
+    platos_mas_vendidos_hoy: list[PlatoVendidoOut]

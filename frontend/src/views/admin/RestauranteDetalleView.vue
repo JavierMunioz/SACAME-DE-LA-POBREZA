@@ -9,8 +9,10 @@ import {
   crearPersonal,
   listarMesas,
   listarPersonal,
+  obtenerEstadisticas,
   obtenerRestaurante,
   regenerarQr,
+  type Estadisticas,
   type Mesa,
   type Personal,
   type RestauranteConMenu,
@@ -28,6 +30,7 @@ const restauranteId = Number(route.params.id)
 const restaurante = ref<RestauranteConMenu | null>(null)
 const mesas = ref<Mesa[]>([])
 const personal = ref<Personal[]>([])
+const estadisticas = ref<Estadisticas | null>(null)
 const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
@@ -52,16 +55,22 @@ async function cargarQr(mesa: Mesa) {
 
 async function cargar() {
   cargando.value = true
-  const [r, m, p] = await Promise.all([
+  const [r, m, p, e] = await Promise.all([
     obtenerRestaurante(restauranteId),
     listarMesas(restauranteId),
     listarPersonal(restauranteId),
+    obtenerEstadisticas(restauranteId),
   ])
   restaurante.value = r
   mesas.value = m
   personal.value = p
+  estadisticas.value = e
   cargando.value = false
   await Promise.all(m.map(cargarQr))
+}
+
+function formatoMoneda(valor: string): string {
+  return `$${Number(valor).toLocaleString('es-CO')}`
 }
 
 function abrirDialogoPersonal() {
@@ -85,6 +94,12 @@ async function guardarPersonal() {
   } finally {
     guardandoPersonal.value = false
   }
+}
+
+const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
+  libre: 'Libre',
+  reservada: 'Reservada',
+  ocupada: 'Ocupada',
 }
 
 const etiquetaRol: Record<RolPersonal, string> = {
@@ -170,6 +185,56 @@ onUnmounted(() => {
         <el-button type="primary" size="large" @click="abrirDialogo">Nueva mesa</el-button>
       </div>
 
+      <div v-if="estadisticas" class="grid-dashboard">
+        <div class="tarjeta-metrica">
+          <span class="label-mono">Capacidad actual</span>
+          <div class="metrica-capacidad">
+            <span class="metrica-numero">
+              {{ estadisticas.mesas_total ? Math.round((estadisticas.mesas_ocupadas / estadisticas.mesas_total) * 100) : 0 }}%
+            </span>
+            <span class="metrica-subtexto">Ocupado</span>
+          </div>
+          <div class="barra-capacidad">
+            <div
+              class="barra-capacidad-relleno"
+              :style="{ width: `${estadisticas.mesas_total ? (estadisticas.mesas_ocupadas / estadisticas.mesas_total) * 100 : 0}%` }"
+            ></div>
+          </div>
+          <span class="metrica-detalle font-mono">{{ estadisticas.mesas_ocupadas }} / {{ estadisticas.mesas_total }} mesas</span>
+        </div>
+
+        <div class="tarjeta-metrica">
+          <span class="label-mono">Ingresos de hoy</span>
+          <span class="metrica-numero metrica-revenue font-mono">{{ formatoMoneda(estadisticas.revenue_hoy) }}</span>
+          <span
+            v-if="estadisticas.variacion_pct !== null"
+            class="badge-variacion"
+            :class="estadisticas.variacion_pct >= 0 ? 'badge-variacion--positiva' : 'badge-variacion--negativa'"
+          >
+            {{ estadisticas.variacion_pct >= 0 ? '↗' : '↘' }} {{ Math.abs(estadisticas.variacion_pct).toFixed(1) }}% vs. ayer
+          </span>
+          <span v-else class="metrica-detalle">Sin datos de ayer para comparar</span>
+        </div>
+
+        <div class="tarjeta-metrica tarjeta-hot-items">
+          <div class="encabezado-seccion">
+            <span class="label-mono">Más vendidos hoy</span>
+          </div>
+          <el-empty
+            v-if="estadisticas.platos_mas_vendidos_hoy.length === 0"
+            description="Todavía no se facturó nada hoy"
+            :image-size="48"
+          />
+          <ul v-else class="lista-hot-items">
+            <li v-for="plato in estadisticas.platos_mas_vendidos_hoy" :key="plato.menu_item_id">
+              <span class="hot-item-nombre">{{ plato.nombre }}</span>
+              <span class="hot-item-vendidos font-mono">{{ plato.cantidad_vendida }} vendidos</span>
+              <span class="hot-item-precio font-mono">{{ formatoMoneda(plato.precio) }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <section class="seccion">
         <h2>Menú</h2>
         <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
@@ -189,7 +254,7 @@ onUnmounted(() => {
             <div class="encabezado-tarjeta-qr">
               <p class="numero-mesa">Mesa {{ mesa.numero }}</p>
               <span class="badge-estado-mesa" :class="`badge-estado-mesa--${mesa.estado}`">
-                {{ mesa.estado === 'ocupada' ? 'Ocupada' : 'Libre' }}
+                {{ etiquetaEstadoMesa[mesa.estado] }}
               </span>
             </div>
             <p class="capacidad">{{ mesa.capacidad }} personas</p>
@@ -407,9 +472,136 @@ onUnmounted(() => {
   background: var(--color-success-bg);
 }
 
+.badge-estado-mesa--reservada {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
 .badge-estado-mesa--ocupada {
   color: var(--color-danger-text);
   background: var(--color-danger-bg);
+}
+
+/* ---- Dashboard: capacidad / revenue / hot items ---- */
+.grid-dashboard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+  margin-bottom: var(--space-10);
+}
+
+@media (max-width: 860px) {
+  .grid-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tarjeta-metrica {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.metrica-capacidad {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.metrica-numero {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2rem;
+  color: var(--color-secondary);
+  line-height: 1;
+}
+
+.metrica-revenue {
+  color: var(--text-primary);
+}
+
+.metrica-subtexto {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.metrica-detalle {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+.barra-capacidad {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container);
+  overflow: hidden;
+  margin: var(--space-1) 0;
+}
+
+.barra-capacidad-relleno {
+  height: 100%;
+  background: var(--color-secondary);
+  border-radius: var(--radius-full);
+  transition: width var(--duration-base) var(--ease-standard);
+}
+
+.badge-variacion {
+  align-self: flex-start;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.badge-variacion--positiva {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.badge-variacion--negativa {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+.tarjeta-hot-items :deep(.el-empty) {
+  padding: var(--space-4) 0;
+}
+
+.lista-hot-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lista-hot-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.hot-item-nombre {
+  font-weight: 500;
+  flex: 1;
+}
+
+.hot-item-vendidos {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.hot-item-precio {
+  color: var(--color-secondary);
+  font-weight: 600;
 }
 
 .capacidad {

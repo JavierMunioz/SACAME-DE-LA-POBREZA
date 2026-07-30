@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,11 +13,29 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.core.security import hash_password
-from app.models import EstadoReserva, MenuItem, Mesa, Reserva, Restaurante, Rol, Usuario
+from app.models import (
+    EstadoMesa,
+    EstadoReserva,
+    Factura,
+    ItemPedido,
+    MenuItem,
+    Mesa,
+    Pedido,
+    Reserva,
+    Restaurante,
+    Rol,
+    Usuario,
+)
 from app.schemas.mesa import MesaCreate, MesaOut
 from app.schemas.menu import MenuItemCreate, MenuItemOut
 from app.schemas.reserva import MesaDisponibilidad
-from app.schemas.restaurante import RestauranteConMenu, RestauranteCreate, RestauranteOut
+from app.schemas.restaurante import (
+    EstadisticasRestauranteOut,
+    PlatoVendidoOut,
+    RestauranteConMenu,
+    RestauranteCreate,
+    RestauranteOut,
+)
 from app.schemas.usuario import PersonalCreate, UsuarioOut
 
 router = APIRouter(tags=["restaurantes"])
@@ -26,13 +45,13 @@ def _qr_url(restaurante_id: int, mesa_id: int, qr_token: str) -> str:
     return f"{settings.frontend_base_url}/mesa/{restaurante_id}/{mesa_id}?token={qr_token}"
 
 
-def _mesa_a_out(mesa: Mesa) -> MesaOut:
+def _mesa_a_out(mesa: Mesa, estado: str | None = None) -> MesaOut:
     return MesaOut(
         id=mesa.id,
         restaurante_id=mesa.restaurante_id,
         numero=mesa.numero,
         capacidad=mesa.capacidad,
-        estado=mesa.estado,
+        estado=estado if estado is not None else mesa.estado.value,
         qr_generado_at=mesa.qr_generado_at,
         qr_url=_qr_url(mesa.restaurante_id, mesa.id, mesa.qr_token),
     )
@@ -94,6 +113,82 @@ def obtener_restaurante(restaurante_id: int, db: Session = Depends(get_db)):
         descripcion=restaurante.descripcion,
         created_at=restaurante.created_at,
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
+    )
+
+
+@router.get(
+    "/restaurantes/{restaurante_id}/estadisticas", response_model=EstadisticasRestauranteOut
+)
+def obtener_estadisticas(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+):
+    """Métricas reales del dashboard admin — nada fabricado. `revenue_ayer`
+    compara el total facturado del día completo de ayer contra lo que va
+    de hoy (no "misma hora de ayer", eso pedía un cálculo que no vale la
+    pena para lo que se usa acá). No hay inventario ni notificaciones:
+    el dominio no tiene esos conceptos."""
+    _get_restaurante_o_404(db, restaurante_id)
+    ahora = datetime.now(timezone.utc)
+    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_ayer = inicio_hoy - timedelta(days=1)
+
+    def _revenue_desde(inicio: datetime, fin: datetime | None) -> float:
+        query = (
+            db.query(func.coalesce(func.sum(Factura.total), 0))
+            .join(Mesa)
+            .filter(Mesa.restaurante_id == restaurante_id, Factura.created_at >= inicio)
+        )
+        if fin is not None:
+            query = query.filter(Factura.created_at < fin)
+        return query.scalar()
+
+    revenue_hoy = _revenue_desde(inicio_hoy, None)
+    revenue_ayer = _revenue_desde(inicio_ayer, inicio_hoy)
+    variacion_pct = (
+        float((revenue_hoy - revenue_ayer) / revenue_ayer * 100) if revenue_ayer else None
+    )
+
+    mesas_total = db.query(Mesa).filter(Mesa.restaurante_id == restaurante_id).count()
+    mesas_ocupadas = (
+        db.query(Mesa)
+        .filter(Mesa.restaurante_id == restaurante_id, Mesa.estado == EstadoMesa.OCUPADA)
+        .count()
+    )
+
+    top_platos = (
+        db.query(
+            MenuItem.id,
+            MenuItem.nombre,
+            MenuItem.precio,
+            func.sum(ItemPedido.cantidad).label("vendidos"),
+        )
+        .join(ItemPedido, ItemPedido.menu_item_id == MenuItem.id)
+        .join(Pedido, Pedido.id == ItemPedido.pedido_id)
+        .join(Factura, Factura.id == Pedido.factura_id)
+        .filter(MenuItem.restaurante_id == restaurante_id, Factura.created_at >= inicio_hoy)
+        .group_by(MenuItem.id, MenuItem.nombre, MenuItem.precio)
+        .order_by(func.sum(ItemPedido.cantidad).desc())
+        .limit(3)
+        .all()
+    )
+
+    return EstadisticasRestauranteOut(
+        revenue_hoy=revenue_hoy,
+        revenue_ayer=revenue_ayer,
+        variacion_pct=variacion_pct,
+        mesas_ocupadas=mesas_ocupadas,
+        mesas_total=mesas_total,
+        platos_mas_vendidos_hoy=[
+            PlatoVendidoOut(
+                menu_item_id=fila.id,
+                nombre=fila.nombre,
+                cantidad_vendida=int(fila.vendidos),
+                precio=fila.precio,
+            )
+            for fila in top_platos
+        ],
     )
 
 
@@ -197,11 +292,24 @@ def listar_mesas(
     db: Session = Depends(get_db),
     _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
 ):
+    # Import acá adentro (no al tope del módulo) para evitar un ciclo de
+    # imports entre routers/mesas.py y routers/restaurantes.py.
+    from app.routers.mesas import _expirar_reservas_vencidas, _reserva_propia_y_libre
+
     _get_restaurante_o_404(db, restaurante_id)
     mesas = (
         db.query(Mesa).filter(Mesa.restaurante_id == restaurante_id).order_by(Mesa.numero).all()
     )
-    return [_mesa_a_out(m) for m in mesas]
+    salida = []
+    for mesa in mesas:
+        _expirar_reservas_vencidas(db, mesa.id)
+        if mesa.estado == EstadoMesa.OCUPADA:
+            estado = "ocupada"
+        else:
+            _, mesa_libre_ahora = _reserva_propia_y_libre(db, mesa, None)
+            estado = "libre" if mesa_libre_ahora else "reservada"
+        salida.append(_mesa_a_out(mesa, estado=estado))
+    return salida
 
 
 def _se_solapan(inicio_a: datetime, fin_a: datetime, inicio_b: datetime, fin_b: datetime) -> bool:

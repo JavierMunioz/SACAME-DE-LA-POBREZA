@@ -31,9 +31,30 @@ export interface Mesa {
   restaurante_id: number
   numero: number
   capacidad: number
-  estado: 'libre' | 'ocupada'
+  estado: 'libre' | 'reservada' | 'ocupada'
   qr_generado_at: string
   qr_url: string
+}
+
+export interface PlatoVendido {
+  menu_item_id: number
+  nombre: string
+  cantidad_vendida: number
+  precio: string
+}
+
+export interface Estadisticas {
+  revenue_hoy: string
+  revenue_ayer: string
+  variacion_pct: number | null
+  mesas_ocupadas: number
+  mesas_total: number
+  platos_mas_vendidos_hoy: PlatoVendido[]
+}
+
+export async function obtenerEstadisticas(restauranteId: number): Promise<Estadisticas> {
+  const { data } = await api.get<Estadisticas>(`/restaurantes/${restauranteId}/estadisticas`)
+  return data
 }
 
 export async function listarRestaurantes(): Promise<Restaurante[]> {

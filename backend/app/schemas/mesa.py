@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.mesa import EstadoMesa
 from app.schemas.menu import MenuItemOut
 from app.schemas.reserva import ReservaOut
 
@@ -20,7 +19,9 @@ class MesaOut(BaseModel):
     restaurante_id: int
     numero: int
     capacidad: int
-    estado: EstadoMesa
+    # Tri-estado de presentación (libre/reservada/ocupada), igual que en
+    # MesaQrInfo — reservada se computa al vuelo, no se guarda.
+    estado: Literal["libre", "reservada", "ocupada"]
     qr_generado_at: datetime
     qr_url: str
 
