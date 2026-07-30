@@ -56,6 +56,16 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Fase 5 completa: facturación
+- Backend: `POST /mesas/{id}/factura` (mesero/admin_restaurante) agrupa todos los pedidos `confirmado` sin facturar de la mesa, calcula `subtotal` (suma de `cantidad * precio_unitario` de todos sus items), `propina` opcional (`porcentaje_propina`, default 10%) y `total`. Al facturar, cada pedido pasa a `entregado` y queda linkeado con `factura_id` — así no se puede facturar dos veces lo mismo (422 si se reintenta sobre una mesa sin pedidos confirmados pendientes).
+- Solo se factura lo `confirmado` (ya pasó por cocina), nunca lo `pendiente` — no tiene sentido cobrar algo que la cocina ni recibió todavía.
+- `GET /facturas/{id}` para reconsultar el voucher ya emitido.
+- Frontend: la comanda del mesero ahora agrupa las mesas con pedidos confirmados en una franja "Listas para cerrar", con un botón por mesa. Al cerrar se abre un diálogo (propina sí/no + porcentaje) y después un voucher imprimible: ítems, subtotal, propina (solo si aplica), total, y el botón **"Factura electrónica" deshabilitado en gris** tal como pide el Readme (reservado para una fase futura con DIAN).
+- Probado en vivo con dos mesas reales: una con propina (10% sobre $112.000 = $11.200, total $123.200) y otra sin propina (total = subtotal, sin mostrar la línea de propina). Verificado también contra la base de datos: pedido pasa a `entregado` con el `factura_id` correcto.
+- 6 tests nuevos (29 en total): factura con/sin propina, no se puede facturar dos veces, no se puede facturar mesa sin pedidos confirmados, obtener factura, cliente no puede facturar (403).
+- **Todos los PRs de fases 0 a 4 se mergearon a `main`** en esta sesión (PRs #1, #7, #8, #9, #10, #11 — los #2 a #6 originales quedaron cerrados/huérfanos porque GitHub cierra automáticamente un PR apilado cuando se borra su rama base al mergear el anterior; se resolvió rebaseando cada rama sobre `main` actualizado y abriendo un PR de reemplazo apuntando directo a `main`). Lección para la próxima tanda de PRs apilados: o no usar `--delete-branch` hasta mergear todo el stack, o mergear con retarget manual de la base antes de borrar.
+- Con Fase 5 el ciclo de negocio queda funcionalmente completo: reserva → pedido → confirmación → cocina → factura. Falta Fase 6 (endurecimiento para producción): manejo de errores/reconexión, logs, variables de entorno y despliegue, pruebas de carga.
+
 ### [2026-07-29] Fase 4 completa: flujo de cocina
 - Backend: `GET /pedidos` ahora acepta rol `cocina` además de mesero/admin_restaurante, y un query param `estado` opcional. **Detalle importante:** cuando se filtra por `estado=confirmado`, el orden pasa de `created_at` a `confirmado_at` — el FIFO de cocina es por hora de llegada *a cocina* (cuándo el mesero confirmó), no por hora en que el cliente hizo el pedido. Probado explícitamente con un caso donde el pedido creado primero se confirma segundo: aparece segundo en la comanda de cocina, no primero.
 - Frontend: `cocina/HomeView.vue`, mismo patrón de polling que `mesero/HomeView.vue` (5s), pero de solo lectura — sin botones de confirmar/cancelar (esos son atribución del mesero, no de cocina; el backend también lo bloquea con 403 si cocina intenta pegarle a esos endpoints).

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import auth, mesas, pedidos, reservas, restaurantes
+from app.routers import auth, facturas, mesas, pedidos, reservas, restaurantes
 
 app = FastAPI(title="Sacame de la Pobreza API")
 
@@ -19,6 +19,7 @@ app.include_router(restaurantes.router)
 app.include_router(mesas.router)
 app.include_router(reservas.router)
 app.include_router(pedidos.router)
+app.include_router(facturas.router)
 
 
 @app.get("/health")
