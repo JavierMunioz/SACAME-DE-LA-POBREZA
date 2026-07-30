@@ -23,13 +23,13 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Vista para descargar/imprimir el lote de QRs de un restaurante
 
 ## Fase 2 — Flujo del cliente
-- [ ] Listado de restaurantes afiliados
-- [ ] Vista de restaurante + mesas disponibles por fecha/hora
-- [ ] Reserva online
-- [ ] Escaneo de QR de mesa:
-  - [ ] Caso: reserva propia confirmada
-  - [ ] Caso: mesa libre sin reserva → aceptar uso
-- [ ] Menú + carrito + envío de pedido
+- [x] Listado de restaurantes afiliados
+- [x] Vista de restaurante + mesas disponibles por fecha/hora
+- [x] Reserva online
+- [x] Escaneo de QR de mesa:
+  - [x] Caso: reserva propia confirmada
+  - [x] Caso: mesa libre sin reserva → aceptar uso
+- [x] Menú + carrito + envío de pedido
 
 ## Fase 3 — Flujo del mesero
 - [ ] Comanda principal (estación fija, táctil): lista de pedidos entrantes en tiempo real

@@ -1,5 +1,6 @@
 import io
 import secrets
+from datetime import datetime, timedelta, timezone
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,9 +11,10 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_roles
-from app.models import MenuItem, Mesa, Restaurante, Rol
+from app.models import EstadoReserva, MenuItem, Mesa, Reserva, Restaurante, Rol
 from app.schemas.mesa import MesaCreate, MesaOut
 from app.schemas.menu import MenuItemCreate, MenuItemOut
+from app.schemas.reserva import MesaDisponibilidad
 from app.schemas.restaurante import RestauranteConMenu, RestauranteCreate, RestauranteOut
 
 router = APIRouter(tags=["restaurantes"])
@@ -153,6 +155,52 @@ def listar_mesas(
         db.query(Mesa).filter(Mesa.restaurante_id == restaurante_id).order_by(Mesa.numero).all()
     )
     return [_mesa_a_out(m) for m in mesas]
+
+
+def _se_solapan(inicio_a: datetime, fin_a: datetime, inicio_b: datetime, fin_b: datetime) -> bool:
+    return inicio_a < fin_b and inicio_b < fin_a
+
+
+@router.get(
+    "/restaurantes/{restaurante_id}/disponibilidad",
+    response_model=list[MesaDisponibilidad],
+)
+def disponibilidad_mesas(
+    restaurante_id: int,
+    inicio: datetime,
+    duracion_minutos: int = 90,
+    db: Session = Depends(get_db),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    if inicio.tzinfo is None:
+        inicio = inicio.replace(tzinfo=timezone.utc)
+    fin = inicio + timedelta(minutes=duracion_minutos)
+
+    mesas = (
+        db.query(Mesa).filter(Mesa.restaurante_id == restaurante_id).order_by(Mesa.numero).all()
+    )
+    reservas_activas = (
+        db.query(Reserva)
+        .join(Mesa)
+        .filter(Mesa.restaurante_id == restaurante_id, Reserva.estado == EstadoReserva.ACTIVA)
+        .all()
+    )
+
+    ocupadas = set()
+    for r in reservas_activas:
+        r_fin = r.inicio + timedelta(minutes=r.duracion_minutos)
+        if _se_solapan(inicio, fin, r.inicio, r_fin):
+            ocupadas.add(r.mesa_id)
+
+    return [
+        MesaDisponibilidad(
+            mesa_id=m.id,
+            numero=m.numero,
+            capacidad=m.capacidad,
+            disponible=m.id not in ocupadas,
+        )
+        for m in mesas
+    ]
 
 
 @router.get("/mesas/{mesa_id}/qr.png")
