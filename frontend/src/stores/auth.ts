@@ -20,10 +20,15 @@ interface Usuario {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('token'))
+  const token = ref<string | null>(
+    localStorage.getItem('token') ?? sessionStorage.getItem('token'),
+  )
   const usuario = ref<Usuario | null>(null)
 
-  async function login(email: string, password: string) {
+  // "Recordar este dispositivo": localStorage sobrevive cerrar el
+  // navegador; sessionStorage se borra solo al cerrar la pestaña — útil
+  // en un dispositivo compartido (ej. tablet del restaurante).
+  async function login(email: string, password: string, recordar = true) {
     const form = new URLSearchParams()
     form.set('username', email)
     form.set('password', password)
@@ -31,7 +36,9 @@ export const useAuthStore = defineStore('auth', () => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
     token.value = data.access_token
-    localStorage.setItem('token', data.access_token)
+    localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
+    ;(recordar ? localStorage : sessionStorage).setItem('token', data.access_token)
     await cargarUsuario()
   }
 
@@ -50,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     usuario.value = null
     localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
   }
 
   return { token, usuario, login, logout, cargarUsuario, registro }

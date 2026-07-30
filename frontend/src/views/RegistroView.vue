@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { KnifeFork } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 
 const form = reactive({ nombre: '', email: '', password: '' })
@@ -35,10 +36,12 @@ async function enviar() {
 
 <template>
   <div class="pagina">
+    <div class="fondo-hero" aria-hidden="true"></div>
     <div class="tarjeta">
       <div class="marca">
-        <span class="marca-icono">S</span>
+        <span class="marca-icono"><el-icon :size="20"><KnifeFork /></el-icon></span>
         <span class="marca-nombre">Sacame de la Pobreza</span>
+        <span class="marca-subtitulo">Panel de gestión</span>
       </div>
 
       <div class="encabezado">
@@ -50,11 +53,11 @@ async function enviar() {
 
       <form class="formulario" @submit.prevent="enviar">
         <label class="campo">
-          <span class="campo-label">Nombre</span>
+          <span class="campo-label label-mono">Nombre</span>
           <el-input v-model="form.nombre" size="large" autocomplete="name" placeholder="Tu nombre" />
         </label>
         <label class="campo">
-          <span class="campo-label">Email</span>
+          <span class="campo-label label-mono">Email</span>
           <el-input
             v-model="form.email"
             type="email"
@@ -64,7 +67,7 @@ async function enviar() {
           />
         </label>
         <label class="campo">
-          <span class="campo-label">Contraseña</span>
+          <span class="campo-label label-mono">Contraseña</span>
           <el-input
             v-model="form.password"
             type="password"
@@ -99,17 +102,30 @@ async function enviar() {
 <style scoped>
 .pagina {
   min-height: 100dvh;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
   background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.fondo-hero {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(79, 70, 229, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(24, 24, 27, 0.06), transparent 45%);
+  pointer-events: none;
 }
 
 .tarjeta {
+  position: relative;
   width: 100%;
   max-width: 400px;
   background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: var(--space-8);
@@ -117,7 +133,9 @@ async function enviar() {
 
 .marca {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  text-align: center;
   gap: var(--space-2);
   margin-bottom: var(--space-8);
 }
@@ -125,29 +143,33 @@ async function enviar() {
 .marca-icono {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
   color: white;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.95rem;
+  margin-bottom: var(--space-1);
 }
 
 .marca-nombre {
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 0.95rem;
+  font-weight: 700;
+  font-size: 1.05rem;
   color: var(--text-primary);
+}
+
+.marca-subtitulo {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
 }
 
 .encabezado {
   margin-bottom: var(--space-6);
+  text-align: center;
 }
 
 .encabezado h1 {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   margin-bottom: var(--space-1);
 }
 
@@ -171,12 +193,6 @@ async function enviar() {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.campo-label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-primary);
 }
 
 .boton-crear {
