@@ -399,7 +399,12 @@ onUnmounted(() => clearInterval(intervalo))
                 {{ etiquetaEstadoMesa[mesa.estado] }}
               </span>
             </div>
-            <p class="capacidad-mesa">{{ mesa.capacidad }} personas</p>
+            <div class="info-mesa">
+              <p class="capacidad-mesa">{{ mesa.capacidad }} personas</p>
+              <p v-if="mesa.codigo_acceso" class="codigo-acceso-mesa">
+                Código: <span class="font-mono">{{ mesa.codigo_acceso }}</span>
+              </p>
+            </div>
             <div class="acciones-pedido">
               <el-button
                 v-if="mesa.estado === 'libre'"
@@ -819,10 +824,25 @@ onUnmounted(() => clearInterval(intervalo))
   box-shadow: var(--shadow-soft), var(--highlight-inset);
 }
 
+.info-mesa {
+  margin-bottom: var(--space-4);
+}
+
 .capacidad-mesa {
   color: var(--text-secondary);
   font-size: 0.9rem;
-  margin-bottom: var(--space-4);
+}
+
+.codigo-acceso-mesa {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: var(--space-1);
+}
+
+.codigo-acceso-mesa .font-mono {
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
 }
 
 .badge-estado-mesa--libre {

@@ -45,7 +45,9 @@ def _qr_url(restaurante_id: int, mesa_id: int, qr_token: str) -> str:
     return f"{settings.frontend_base_url}/mesa/{restaurante_id}/{mesa_id}?token={qr_token}"
 
 
-def _mesa_a_out(mesa: Mesa, estado: str | None = None) -> MesaOut:
+def _mesa_a_out(
+    mesa: Mesa, estado: str | None = None, codigo_acceso: str | None = None
+) -> MesaOut:
     return MesaOut(
         id=mesa.id,
         restaurante_id=mesa.restaurante_id,
@@ -54,6 +56,7 @@ def _mesa_a_out(mesa: Mesa, estado: str | None = None) -> MesaOut:
         estado=estado if estado is not None else mesa.estado.value,
         qr_generado_at=mesa.qr_generado_at,
         qr_url=_qr_url(mesa.restaurante_id, mesa.id, mesa.qr_token),
+        codigo_acceso=codigo_acceso,
     )
 
 
@@ -360,7 +363,11 @@ def listar_mesas(
 ):
     # Import acá adentro (no al tope del módulo) para evitar un ciclo de
     # imports entre routers/mesas.py y routers/restaurantes.py.
-    from app.routers.mesas import _expirar_reservas_vencidas, _reserva_propia_y_libre
+    from app.routers.mesas import (
+        _expirar_reservas_vencidas,
+        _reserva_propia_y_libre,
+        _sesion_activa,
+    )
 
     _get_restaurante_o_404(db, restaurante_id)
     _verificar_acceso_restaurante(admin, restaurante_id)
@@ -370,12 +377,15 @@ def listar_mesas(
     salida = []
     for mesa in mesas:
         _expirar_reservas_vencidas(db, mesa.id)
+        codigo_acceso = None
         if mesa.estado == EstadoMesa.OCUPADA:
             estado = "ocupada"
+            sesion = _sesion_activa(db, mesa.id)
+            codigo_acceso = sesion.codigo_acceso if sesion is not None else None
         else:
             _, mesa_libre_ahora = _reserva_propia_y_libre(db, mesa, None)
             estado = "libre" if mesa_libre_ahora else "reservada"
-        salida.append(_mesa_a_out(mesa, estado=estado))
+        salida.append(_mesa_a_out(mesa, estado=estado, codigo_acceso=codigo_acceso))
     return salida
 
 

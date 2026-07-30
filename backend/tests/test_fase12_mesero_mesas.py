@@ -90,6 +90,37 @@ def test_mesero_ocupa_libera_y_vuelve_a_ocupar_mesa(client, restaurante_con_mesa
     assert r4.status_code == 201
 
 
+def test_listar_mesas_expone_codigo_acceso_mientras_este_ocupada(
+    client, restaurante_con_mesa, mesero_autenticado
+):
+    mesa_id = restaurante_con_mesa["mesa"].id
+    restaurante_id = restaurante_con_mesa["restaurante"].id
+
+    def _mesa_del_listado():
+        r = client.get(
+            f"/restaurantes/{restaurante_id}/mesas", headers=mesero_autenticado["headers"]
+        )
+        return next(m for m in r.json() if m["id"] == mesa_id)
+
+    assert _mesa_del_listado()["codigo_acceso"] is None
+
+    ocupar = client.post(
+        f"/mesas/{mesa_id}/ocupar-staff", json={}, headers=mesero_autenticado["headers"]
+    )
+    codigo = ocupar.json()["codigo_acceso"]
+    assert codigo is not None
+    assert _mesa_del_listado()["codigo_acceso"] == codigo
+
+    client.post(f"/mesas/{mesa_id}/liberar", headers=mesero_autenticado["headers"])
+    assert _mesa_del_listado()["codigo_acceso"] is None
+
+    # se ocupa de nuevo: el código es otro (se regenera por sesión).
+    ocupar2 = client.post(
+        f"/mesas/{mesa_id}/ocupar-staff", json={}, headers=mesero_autenticado["headers"]
+    )
+    assert _mesa_del_listado()["codigo_acceso"] == ocupar2.json()["codigo_acceso"]
+
+
 def test_liberar_mesa_con_pedidos_sin_facturar_se_bloquea(
     client, restaurante_con_mesa, mesero_autenticado
 ):

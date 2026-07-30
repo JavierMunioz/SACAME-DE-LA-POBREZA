@@ -24,6 +24,10 @@ class MesaOut(BaseModel):
     estado: Literal["libre", "reservada", "ocupada"]
     qr_generado_at: datetime
     qr_url: str
+    # Código de 4 dígitos de la sesión activa (null si no está ocupada).
+    # Lo necesita el mesero para poder decírselo al cliente que quiera
+    # sumarse desde su celular después de una apertura manual.
+    codigo_acceso: str | None = None
 
 
 class SesionMesaOut(BaseModel):

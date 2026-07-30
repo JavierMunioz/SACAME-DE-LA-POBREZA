@@ -56,6 +56,15 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] El código de acceso queda visible permanente en la card de la mesa
+El popup al ocupar (agregado en la pasada anterior) mostraba el código una sola vez — si el mesero lo veía pasar sin anotarlo, no había forma de volver a consultarlo salvo liberar y ocupar de nuevo. Pedido del usuario: que se vea siempre debajo de la mesa mientras esté ocupada, no solo en el momento de abrirla.
+
+- `MesaOut` (schema) ganó `codigo_acceso: str | None`. `listar_mesas` ahora busca la `SesionMesa` activa de cada mesa ocupada (`_sesion_activa`, ya existía en `mesas.py`) y expone su código; `null` si la mesa no está ocupada.
+- `_mesa_a_out` acepta el nuevo parámetro opcional; los demás call-sites (`crear_mesa`, `regenerar_qr` vía `mesas.py`) no lo pasan y quedan en `null` por default — no rompe nada, esos endpoints no necesitan mostrarlo.
+- Frontend: la card de mesa del mesero (`mesero/HomeView.vue`) muestra "Código: XXXX" debajo de la capacidad cuando `mesa.codigo_acceso` no es null. Se actualiza solo con el polling normal de 5s (mismo mecanismo que el resto de la vista) y con el refresh manual al entrar a la pestaña — no hizo falta lógica nueva de refresco.
+- Test nuevo (`test_listar_mesas_expone_codigo_acceso_mientras_este_ocupada`): null en libre, aparece al ocupar, vuelve a null al liberar, y se mantiene consistente entre la respuesta de `ocupar-staff` y el listado. Suite completa: 72/72.
+- Probado en vivo: ocupar mesa 1 → "Código: 3923" visible en la card → recargar la página entera → sigue ahí (no era solo estado en memoria del popup) → liberar → desaparece y la mesa vuelve a mostrar "Ocupar".
+
 ### [2026-07-30] Código de acceso al ocupar mesa desde mesero + observaciones por ítem
 Dos faltantes que el usuario detectó probando el flujo de mesero: (1) al ocupar una mesa manualmente (`ocupar-staff`) el backend ya devolvía `codigo_acceso` en la respuesta, pero el frontend lo descartaba — el mesero no tenía forma de decírselo al cliente si después quería sumarse desde su celular vía QR; (2) el diálogo de "Tomar pedido" del mesero solo tenía selector de cantidad, sin campo de texto por ítem — no se podía pedir "sin lechuga" ni nada parecido, aunque el backend siempre soportó `observaciones` por ítem (lo usa el flujo de cliente hace rato).
 

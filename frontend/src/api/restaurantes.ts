@@ -36,6 +36,7 @@ export interface Mesa {
   estado: 'libre' | 'reservada' | 'ocupada'
   qr_generado_at: string
   qr_url: string
+  codigo_acceso: string | null
 }
 
 export interface PlatoVendido {
