@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Search } from '@element-plus/icons-vue'
 import { listarRestaurantes, type Restaurante } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
+import { imagenComida } from '../../utils/imagenesComida'
 
 const restaurantes = ref<Restaurante[]>([])
+const busqueda = ref('')
 const cargando = ref(true)
 const router = useRouter()
 const auth = useAuthStore()
 
 const estaLogueado = computed(() => !!auth.usuario)
 
-// No hay fotos reales de los restaurantes en el dominio todavía — se usa
-// una imagen determinística (mismo restaurante = misma foto siempre) en
-// vez de dejar la tarjeta sin imagen o inventar una URL falsa.
-function imagenRestaurante(r: Restaurante, ancho: number, alto: number): string {
-  return `https://picsum.photos/seed/restaurante-${r.id}/${ancho}/${alto}`
-}
+const restaurantesFiltrados = computed(() => {
+  const q = busqueda.value.trim().toLowerCase()
+  if (!q) return restaurantes.value
+  return restaurantes.value.filter(
+    (r) => r.nombre.toLowerCase().includes(q) || (r.descripcion ?? '').toLowerCase().includes(q),
+  )
+})
 
 async function cargar() {
   cargando.value = true
@@ -63,8 +67,17 @@ onMounted(async () => {
 
     <main class="contenido">
       <div class="titulo-seccion">
-        <h1>Restaurantes</h1>
-        <p class="subtitulo">Elegí dónde comer y reservá en segundos.</p>
+        <h1>Restaurantes cerca de ti</h1>
+        <p class="subtitulo">Reservá tu mesa y pedí desde tu celular en segundos.</p>
+        <el-input
+          v-model="busqueda"
+          size="large"
+          placeholder="Buscar restaurante o tipo de cocina..."
+          class="buscador"
+          clearable
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
       </div>
 
       <div v-if="cargando" class="grid-restaurantes">
@@ -84,9 +97,14 @@ onMounted(async () => {
         <p class="estado-vacio-texto">Volvé a intentarlo más tarde.</p>
       </div>
 
+      <div v-else-if="restaurantesFiltrados.length === 0" class="estado-vacio">
+        <p class="estado-vacio-titulo">Sin resultados para "{{ busqueda }}"</p>
+        <p class="estado-vacio-texto">Probá con otro nombre o tipo de cocina.</p>
+      </div>
+
       <div v-else class="bento-restaurantes">
         <button
-          v-for="(r, i) in restaurantes"
+          v-for="(r, i) in restaurantesFiltrados"
           :key="r.id"
           type="button"
           class="tarjeta-restaurante"
@@ -95,7 +113,7 @@ onMounted(async () => {
         >
           <div class="tarjeta-restaurante-imagen">
             <img
-              :src="imagenRestaurante(r, i === 0 ? 800 : 400, i === 0 ? 480 : 260)"
+              :src="imagenComida(r.id, i === 0 ? 800 : 400, i === 0 ? 480 : 260)"
               :alt="r.nombre"
               loading="lazy"
             />
@@ -106,6 +124,25 @@ onMounted(async () => {
             <span class="ver-mas">Ver menú y reservar →</span>
           </div>
         </button>
+      </div>
+
+      <div class="franja-features card-soft">
+        <div class="feature-item">
+          <p class="feature-titulo">Reservá en segundos</p>
+          <p class="feature-texto">Sin llamadas, sin esperas.</p>
+        </div>
+        <div class="feature-item">
+          <p class="feature-titulo">Pedí desde tu celular</p>
+          <p class="feature-texto">Escaneá el QR y pedís directo, sin cuenta.</p>
+        </div>
+        <div class="feature-item">
+          <p class="feature-titulo">Carrito en vivo</p>
+          <p class="feature-texto">Toda la mesa ve lo mismo, en tiempo real.</p>
+        </div>
+        <div class="feature-item">
+          <p class="feature-titulo">Cocina conectada</p>
+          <p class="feature-texto">Tu pedido llega a cocina apenas se confirma.</p>
+        </div>
       </div>
     </main>
   </div>
@@ -189,13 +226,49 @@ onMounted(async () => {
 }
 
 .titulo-seccion h1 {
-  font-size: 1.75rem;
+  font-size: 2.25rem;
   margin-bottom: var(--space-2);
 }
 
 .subtitulo {
   color: var(--text-secondary);
   font-size: 1rem;
+  margin-bottom: var(--space-5);
+}
+
+.buscador {
+  max-width: 480px;
+}
+
+.buscador :deep(.el-input__wrapper) {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.franja-features {
+  margin-top: var(--space-10);
+  padding: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-5);
+}
+
+@media (min-width: 720px) {
+  .franja-features {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.feature-titulo {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: var(--space-1);
+}
+
+.feature-texto {
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+  line-height: 1.5;
 }
 
 /* Bento real: el primer restaurante ocupa una tarjeta grande a todo lo
