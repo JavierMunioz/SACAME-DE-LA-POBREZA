@@ -20,9 +20,12 @@ const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 
+const CATEGORIAS = ['Mariscos', 'Italiana', 'Hamburguesas', 'Parrilla', 'Sushi', 'Otra']
+
 const form = reactive({
   nombre: '',
   descripcion: '',
+  categoria: '',
   menu: [] as MenuItemCreate[],
 })
 
@@ -43,6 +46,7 @@ function quitarItemMenu(index: number) {
 function abrirDialogo() {
   form.nombre = ''
   form.descripcion = ''
+  form.categoria = ''
   form.menu = []
   dialogoAbierto.value = true
 }
@@ -57,6 +61,7 @@ async function guardar() {
     await crearRestaurante({
       nombre: form.nombre,
       descripcion: form.descripcion || undefined,
+      categoria: form.categoria || undefined,
       menu_inicial: form.menu.filter((m) => m.nombre.trim()),
     })
     ElMessage.success('Restaurante creado')
@@ -142,6 +147,11 @@ onMounted(cargar)
         </el-form-item>
         <el-form-item label="Descripción">
           <el-input v-model="form.descripcion" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="Categoría">
+          <el-select v-model="form.categoria" placeholder="Elegí una categoría" style="width: 100%">
+            <el-option v-for="c in CATEGORIAS" :key="c" :label="c" :value="c" />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="Menú inicial (opcional)">

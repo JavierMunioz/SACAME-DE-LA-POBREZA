@@ -1,25 +1,49 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search } from '@element-plus/icons-vue'
+import { Grid, Search } from '@element-plus/icons-vue'
 import { listarRestaurantes, type Restaurante } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
 
 const restaurantes = ref<Restaurante[]>([])
 const busqueda = ref('')
+const categoriaActiva = ref('Todos')
+const dialogoComoFuncionaAbierto = ref(false)
 const cargando = ref(true)
 const router = useRouter()
 const auth = useAuthStore()
 
 const estaLogueado = computed(() => !!auth.usuario)
 
+// Favoritos reales guardados en localStorage — no hace falta cuenta para
+// marcar uno, es un gusto de dispositivo, no un dato de servidor.
+const CLAVE_FAVORITOS = 'restaurantes-favoritos'
+const favoritos = reactive<Set<number>>(
+  new Set(JSON.parse(localStorage.getItem(CLAVE_FAVORITOS) ?? '[]')),
+)
+
+function alternarFavorito(id: number, evento: MouseEvent) {
+  evento.stopPropagation()
+  if (favoritos.has(id)) favoritos.delete(id)
+  else favoritos.add(id)
+  localStorage.setItem(CLAVE_FAVORITOS, JSON.stringify([...favoritos]))
+}
+
+// Categorías reales de los restaurantes cargados, no una lista inventada.
+const categorias = computed(() => {
+  const set = new Set(restaurantes.value.map((r) => r.categoria).filter((c): c is string => !!c))
+  return ['Todos', ...set]
+})
+
 const restaurantesFiltrados = computed(() => {
   const q = busqueda.value.trim().toLowerCase()
-  if (!q) return restaurantes.value
-  return restaurantes.value.filter(
-    (r) => r.nombre.toLowerCase().includes(q) || (r.descripcion ?? '').toLowerCase().includes(q),
-  )
+  return restaurantes.value.filter((r) => {
+    const coincideCategoria = categoriaActiva.value === 'Todos' || r.categoria === categoriaActiva.value
+    const coincideBusqueda =
+      !q || r.nombre.toLowerCase().includes(q) || (r.descripcion ?? '').toLowerCase().includes(q)
+    return coincideCategoria && coincideBusqueda
+  })
 })
 
 async function cargar() {
@@ -56,11 +80,20 @@ onMounted(async () => {
         <span class="marca-icono">S</span>
         <span class="marca-nombre">Sacame de la Pobreza</span>
       </div>
+      <nav class="nav-principal">
+        <span class="nav-link nav-link--activo">
+          <el-icon :size="16"><Grid /></el-icon>
+          Inicio
+        </span>
+        <button type="button" class="nav-link" @click="dialogoComoFuncionaAbierto = true">
+          ¿Cómo funciona?
+        </button>
+      </nav>
       <div class="acciones-header">
         <span v-if="estaLogueado" class="saludo">Hola, {{ auth.usuario?.nombre }}</span>
         <el-button v-if="estaLogueado" @click="cerrarSesion">Salir</el-button>
         <router-link v-else to="/login">
-          <el-button>Iniciar sesión</el-button>
+          <el-button type="primary">Iniciar sesión</el-button>
         </router-link>
       </div>
     </header>
@@ -78,13 +111,26 @@ onMounted(async () => {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
+
+        <div v-if="categorias.length > 1" class="chips-categoria">
+          <button
+            v-for="c in categorias"
+            :key="c"
+            type="button"
+            class="chip"
+            :class="{ 'chip--activo': categoriaActiva === c }"
+            @click="categoriaActiva = c"
+          >
+            {{ c }}
+          </button>
+        </div>
       </div>
 
       <div v-if="cargando" class="grid-restaurantes">
-        <div v-for="i in 3" :key="i" class="tarjeta-skeleton">
+        <div v-for="i in 4" :key="i" class="tarjeta-skeleton">
           <el-skeleton animated>
             <template #template>
-              <el-skeleton-item variant="image" style="height: 140px" />
+              <el-skeleton-item variant="image" style="height: 160px" />
               <el-skeleton-item variant="text" style="width: 60%; height: 20px; margin-top: 12px" />
               <el-skeleton-item variant="text" style="width: 40%; margin-top: 8px" />
             </template>
@@ -98,29 +144,39 @@ onMounted(async () => {
       </div>
 
       <div v-else-if="restaurantesFiltrados.length === 0" class="estado-vacio">
-        <p class="estado-vacio-titulo">Sin resultados para "{{ busqueda }}"</p>
-        <p class="estado-vacio-texto">Probá con otro nombre o tipo de cocina.</p>
+        <p class="estado-vacio-titulo">Sin resultados</p>
+        <p class="estado-vacio-texto">Probá con otro nombre, categoría o búsqueda.</p>
       </div>
 
-      <div v-else class="bento-restaurantes">
+      <div v-else class="grid-restaurantes">
         <button
-          v-for="(r, i) in restaurantesFiltrados"
+          v-for="r in restaurantesFiltrados"
           :key="r.id"
           type="button"
           class="tarjeta-restaurante"
-          :class="{ 'tarjeta-restaurante--destacada': i === 0 }"
           @click="verRestaurante(r.id)"
         >
           <div class="tarjeta-restaurante-imagen">
-            <img
-              :src="imagenComida(r.id, i === 0 ? 800 : 400, i === 0 ? 480 : 260)"
-              :alt="r.nombre"
-              loading="lazy"
-            />
+            <img :src="imagenComida(r.id, 400, 260)" :alt="r.nombre" loading="lazy" />
+            <span v-if="r.mesas_disponibles" class="badge-disponible">
+              <span class="punto-verde" /> Mesas disponibles
+            </span>
+            <button
+              type="button"
+              class="boton-favorito"
+              :class="{ 'boton-favorito--activo': favoritos.has(r.id) }"
+              :aria-label="favoritos.has(r.id) ? 'Quitar de favoritos' : 'Agregar a favoritos'"
+              @click="alternarFavorito(r.id, $event)"
+            >
+              ♥
+            </button>
           </div>
           <div class="tarjeta-restaurante-cuerpo">
             <h2>{{ r.nombre }}</h2>
-            <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
+            <p class="meta-restaurante">
+              <span v-if="r.categoria">{{ r.categoria }}</span>
+              <span v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</span>
+            </p>
             <span class="ver-mas">Ver menú y reservar →</span>
           </div>
         </button>
@@ -145,6 +201,23 @@ onMounted(async () => {
         </div>
       </div>
     </main>
+
+    <el-dialog v-model="dialogoComoFuncionaAbierto" title="¿Cómo funciona?" width="420px">
+      <ol class="pasos-como-funciona">
+        <li>
+          <strong>Elegí un restaurante</strong>
+          <p>Buscá o filtrá por categoría y entrá a ver el menú.</p>
+        </li>
+        <li>
+          <strong>Reservá o escaneá el QR de tu mesa</strong>
+          <p>Con cuenta podés reservar con anticipación. Sin cuenta, escaneás el QR al llegar.</p>
+        </li>
+        <li>
+          <strong>Pedí y seguí tu orden</strong>
+          <p>Tu pedido llega directo a cocina. Si van varios, todos ven el mismo carrito en vivo.</p>
+        </li>
+      </ol>
+    </el-dialog>
   </div>
 </template>
 
@@ -158,6 +231,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-6);
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
@@ -169,6 +243,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .marca-icono {
@@ -197,10 +272,48 @@ onMounted(async () => {
   }
 }
 
+.nav-principal {
+  display: none;
+  align-items: center;
+  gap: var(--space-5);
+  flex: 1;
+  justify-content: center;
+}
+
+@media (min-width: 780px) {
+  .nav-principal {
+    display: flex;
+  }
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.nav-link:hover {
+  color: var(--text-primary);
+}
+
+.nav-link--activo {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+}
+
 .acciones-header {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 .saludo {
@@ -216,7 +329,7 @@ onMounted(async () => {
 }
 
 .contenido {
-  max-width: 960px;
+  max-width: 1160px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-6) var(--space-16);
 }
@@ -237,12 +350,41 @@ onMounted(async () => {
 }
 
 .buscador {
-  max-width: 480px;
+  max-width: 560px;
+  margin-bottom: var(--space-4);
 }
 
 .buscador :deep(.el-input__wrapper) {
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
+}
+
+.chips-categoria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.chip:hover {
+  border-color: var(--color-secondary);
+}
+
+.chip--activo {
+  background: var(--color-secondary-soft);
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
 }
 
 .franja-features {
@@ -271,26 +413,23 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-/* Bento real: el primer restaurante ocupa una tarjeta grande a todo lo
-   ancho (imagen más grande), el resto en una grilla de 2 columnas. */
-.bento-restaurantes {
+/* Grilla uniforme de 4 columnas, todas las tarjetas del mismo tamaño. */
+.grid-restaurantes {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-5);
 }
 
-@media (max-width: 640px) {
-  .bento-restaurantes {
-    grid-template-columns: 1fr;
+@media (min-width: 720px) {
+  .grid-restaurantes {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
-.tarjeta-restaurante--destacada {
-  grid-column: 1 / -1;
-}
-
-.tarjeta-restaurante--destacada .tarjeta-restaurante-imagen {
-  height: 220px;
+@media (min-width: 1040px) {
+  .grid-restaurantes {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .tarjeta-restaurante {
@@ -315,7 +454,8 @@ onMounted(async () => {
 }
 
 .tarjeta-restaurante-imagen {
-  height: 140px;
+  position: relative;
+  height: 160px;
   overflow: hidden;
   background: var(--surface-muted);
 }
@@ -327,40 +467,81 @@ onMounted(async () => {
   display: block;
 }
 
+.badge-disponible {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px var(--space-3);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.punto-verde {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-success);
+}
+
+.boton-favorito {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.boton-favorito--activo {
+  color: var(--color-danger);
+}
+
 .tarjeta-restaurante-cuerpo {
-  padding: var(--space-5);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .tarjeta-restaurante h2 {
-  font-size: 1.15rem;
+  font-size: 1rem;
 }
 
-.tarjeta-restaurante .descripcion {
+.meta-restaurante {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
+}
+
+.meta-restaurante span:first-child {
+  color: var(--color-secondary);
+  font-weight: 600;
 }
 
 .ver-mas {
   margin-top: var(--space-2);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-secondary);
-}
-
-.grid-restaurantes {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-4);
-}
-
-@media (min-width: 560px) {
-  .grid-restaurantes {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 .tarjeta-skeleton {
@@ -386,5 +567,48 @@ onMounted(async () => {
 .estado-vacio-texto {
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.pasos-como-funciona {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  counter-reset: paso;
+}
+
+.pasos-como-funciona li {
+  padding-left: var(--space-8);
+  position: relative;
+}
+
+.pasos-como-funciona li::before {
+  counter-increment: paso;
+  content: counter(paso);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.pasos-como-funciona strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.pasos-como-funciona p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 </style>

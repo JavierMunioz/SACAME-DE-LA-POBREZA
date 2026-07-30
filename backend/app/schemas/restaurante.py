@@ -9,6 +9,7 @@ from app.schemas.menu import MenuItemCreate, MenuItemOut
 class RestauranteCreate(BaseModel):
     nombre: str
     descripcion: str | None = None
+    categoria: str | None = None
     menu_inicial: list[MenuItemCreate] = []
 
 
@@ -18,7 +19,12 @@ class RestauranteOut(BaseModel):
     id: int
     nombre: str
     descripcion: str | None
+    categoria: str | None
     created_at: datetime
+    # Al menos una mesa libre ahora mismo — computado en el listado
+    # público, no una columna guardada (mismo criterio que el resto del
+    # dominio: el estado de mesa siempre se calcula al vuelo).
+    mesas_disponibles: bool = False
 
 
 class RestauranteConMenu(RestauranteOut):

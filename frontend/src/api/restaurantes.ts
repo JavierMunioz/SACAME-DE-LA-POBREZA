@@ -19,7 +19,9 @@ export interface Restaurante {
   id: number
   nombre: string
   descripcion: string | null
+  categoria: string | null
   created_at: string
+  mesas_disponibles: boolean
 }
 
 export interface RestauranteConMenu extends Restaurante {
@@ -70,6 +72,7 @@ export async function obtenerRestaurante(id: number): Promise<RestauranteConMenu
 export async function crearRestaurante(payload: {
   nombre: string
   descripcion?: string
+  categoria?: string
   menu_inicial: MenuItemCreate[]
 }): Promise<RestauranteConMenu> {
   const { data } = await api.post<RestauranteConMenu>('/restaurantes', payload)

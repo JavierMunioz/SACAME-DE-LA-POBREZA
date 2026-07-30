@@ -56,6 +56,18 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Cuarta pasada: bento asimétrico no era lo que pedía el mockup — grilla uniforme de 4
+El mockup real (imagen pegada en el chat, no el bento inventado de la pasada anterior) muestra una grilla uniforme de 4 columnas, todas las tarjetas del mismo tamaño, con nav bar (Inicio/¿Cómo funciona?), chips de categoría, badge "Mesas disponibles" y corazón de favorito sobre la imagen. Se había armado un layout bento (1 destacada + resto chicas) que no correspondía a lo pedido — corregido a grilla uniforme real.
+
+- **`Restaurante.categoria`** (columna nueva, nullable): el admin ahora elige categoría al crear un restaurante (select con opciones fijas: Mariscos/Italiana/Hamburguesas/Parrilla/Sushi/Otra). Sin esto, los chips de categoría del mockup hubieran sido puro adorno sin filtrar nada real.
+- **`mesas_disponibles`** en `GET /restaurantes` (schema `RestauranteOut`, no columna guardada): `any(mesa.estado == LIBRE)` computado en cada listado — el badge verde "Mesas disponibles" de cada tarjeta ahora refleja el estado real, no un texto fijo. Se probó en vivo: al ocupar la única mesa de un restaurante, el badge desaparece del listado.
+- **Favoritos**: corazón real, no decorativo — toggle guardado en `localStorage` (clave `restaurantes-favoritos`), no necesita cuenta ni backend, es preferencia de dispositivo.
+- **Chips de categoría**: derivados de las categorías que existen de verdad entre los restaurantes cargados (`computed` sobre `restaurantes.value`), no una lista hardcodeada de categorías que no existen en los datos.
+- **"¿Cómo funciona?"**: en vez de un link a una página que no existe, abre un modal con 3 pasos reales (elegí restaurante → reservá o escaneá QR → pedí y seguí tu orden) — contenido genuino sobre cómo funciona el producto, no una página fabricada.
+- Deliberadamente NO se agregó: rating con estrellas ni contador de reseñas (`4.8 (238)` en el mockup) — no hay sistema de reviews en el dominio, y mostrarle a un comensal real un rating inventado para elegir dónde comer es el tipo de dato falso que sí importa no fabricar (a diferencia de una foto de stock, un rating pretende ser una medición real). Tampoco se agregó toggle de tema claro/oscuro — implementarlo bien requeriría variantes dark de toda la app, no un ícono decorativo que no hace nada.
+- 3 tests nuevos (`test_fase10_categoria_disponibilidad.py`): listado incluye categoría/disponibilidad, ocupar una mesa hace que `mesas_disponibles` pase a `false`, crear restaurante con categoría. Suite completa: 56/56.
+- Build + typecheck limpios. Probado en vivo: chips filtrando, favorito persistiendo, badge de disponibilidad real.
+
 ### [2026-07-30] Tercera pasada: mockups pegados directo en el chat (listado + detalle de restaurante)
 El usuario pegó dos imágenes de referencia directo en el chat (el link de ChatGPT que había mandado antes daba 403 — requiere su sesión logueada, no accesible desde acá) mostrando el listado de restaurantes y el detalle de un restaurante con reserva. Se reconstruyeron ambas pantallas del lado cliente para calzar de cerca con la referencia, preservando toda la lógica real (reserva por mesa específica, no por "cupo genérico" — el mockup simplifica a fecha/hora/personas → disponibilidad, pero el backend reserva una mesa puntual, así que se agregó un filtro real de personas sobre la lista de mesas en vez de fingir una reserva automática que el backend no soporta).
 

@@ -12,6 +12,7 @@ class Restaurante(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(150))
     descripcion: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    categoria: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

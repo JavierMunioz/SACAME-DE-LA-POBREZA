@@ -81,7 +81,9 @@ def crear_restaurante(
     db: Session = Depends(get_db),
     _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
 ):
-    restaurante = Restaurante(nombre=datos.nombre, descripcion=datos.descripcion)
+    restaurante = Restaurante(
+        nombre=datos.nombre, descripcion=datos.descripcion, categoria=datos.categoria
+    )
     db.add(restaurante)
     db.flush()
 
@@ -94,14 +96,27 @@ def crear_restaurante(
         id=restaurante.id,
         nombre=restaurante.nombre,
         descripcion=restaurante.descripcion,
+        categoria=restaurante.categoria,
         created_at=restaurante.created_at,
+        mesas_disponibles=False,
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
     )
 
 
 @router.get("/restaurantes", response_model=list[RestauranteOut])
 def listar_restaurantes(db: Session = Depends(get_db)):
-    return db.query(Restaurante).order_by(Restaurante.nombre).all()
+    restaurantes = db.query(Restaurante).order_by(Restaurante.nombre).all()
+    return [
+        RestauranteOut(
+            id=r.id,
+            nombre=r.nombre,
+            descripcion=r.descripcion,
+            categoria=r.categoria,
+            created_at=r.created_at,
+            mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in r.mesas),
+        )
+        for r in restaurantes
+    ]
 
 
 @router.get("/restaurantes/{restaurante_id}", response_model=RestauranteConMenu)
@@ -111,7 +126,9 @@ def obtener_restaurante(restaurante_id: int, db: Session = Depends(get_db)):
         id=restaurante.id,
         nombre=restaurante.nombre,
         descripcion=restaurante.descripcion,
+        categoria=restaurante.categoria,
         created_at=restaurante.created_at,
+        mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in restaurante.mesas),
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
     )
 
