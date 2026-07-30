@@ -1,32 +1,26 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
-const form = reactive({ email: '', password: '' })
+const form = reactive({ nombre: '', email: '', password: '' })
 const cargando = ref(false)
 const auth = useAuthStore()
 const router = useRouter()
-const route = useRoute()
-
-const rolAHome: Record<string, string> = {
-  admin_general: '/admin',
-  admin_restaurante: '/admin',
-  cliente: '/cliente',
-  mesero: '/mesero',
-  cocina: '/cocina',
-}
 
 async function enviar() {
+  if (!form.nombre || !form.email || !form.password) {
+    ElMessage.warning('Completá todos los campos')
+    return
+  }
   cargando.value = true
   try {
-    await auth.login(form.email, form.password)
-    const destino =
-      (route.query.redirect as string) || rolAHome[auth.usuario?.rol ?? ''] || '/'
-    router.push(destino)
-  } catch {
-    ElMessage.error('Email o contraseña incorrectos')
+    await auth.registro(form.nombre, form.email, form.password)
+    router.push('/cliente')
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(status === 409 ? 'Ese email ya está registrado' : 'No se pudo crear la cuenta')
   } finally {
     cargando.value = false
   }
@@ -34,11 +28,14 @@ async function enviar() {
 </script>
 
 <template>
-  <div class="login-page">
-    <el-card class="login-card">
-      <h1>Sacame de la Pobreza</h1>
-      <p class="subtitulo">Iniciar sesión</p>
+  <div class="registro-page">
+    <el-card class="registro-card">
+      <h1>Crear cuenta</h1>
+      <p class="subtitulo">Sacame de la Pobreza</p>
       <el-form :model="form" label-position="top" @submit.prevent="enviar">
+        <el-form-item label="Nombre">
+          <el-input v-model="form.nombre" autocomplete="name" />
+        </el-form-item>
         <el-form-item label="Email">
           <el-input v-model="form.email" type="email" autocomplete="username" />
         </el-form-item>
@@ -46,23 +43,23 @@ async function enviar() {
           <el-input
             v-model="form.password"
             type="password"
-            autocomplete="current-password"
+            autocomplete="new-password"
             show-password
           />
         </el-form-item>
         <el-button type="primary" native-type="submit" :loading="cargando" style="width: 100%">
-          Entrar
+          Crear cuenta
         </el-button>
       </el-form>
-      <p class="link-registro">
-        ¿Todavía no tenés cuenta? <router-link to="/registro">Crear cuenta</router-link>
+      <p class="link-login">
+        ¿Ya tenés cuenta? <router-link to="/login">Iniciar sesión</router-link>
       </p>
     </el-card>
   </div>
 </template>
 
 <style scoped>
-.login-page {
+.registro-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -70,7 +67,7 @@ async function enviar() {
   background: #f2f3f5;
 }
 
-.login-card {
+.registro-card {
   width: 360px;
 }
 
@@ -84,7 +81,7 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
-.link-registro {
+.link-login {
   text-align: center;
   margin-top: 1rem;
   font-size: 0.9rem;

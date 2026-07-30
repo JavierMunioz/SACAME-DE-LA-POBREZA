@@ -33,11 +33,16 @@ export const useAuthStore = defineStore('auth', () => {
     usuario.value = data
   }
 
+  async function registro(nombre: string, email: string, password: string) {
+    await api.post('/auth/registro', { nombre, email, password })
+    await login(email, password)
+  }
+
   function logout() {
     token.value = null
     usuario.value = null
     localStorage.removeItem('token')
   }
 
-  return { token, usuario, login, logout, cargarUsuario }
+  return { token, usuario, login, logout, cargarUsuario, registro }
 })
