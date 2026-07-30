@@ -11,9 +11,9 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Vue 3 base + routing por rol
 
 ## Fase 1 — Modelo de datos y autenticación
-- [ ] Tablas: `restaurantes`, `mesas`, `reservas`, `usuarios`, `pedidos`, `items_pedido`, `menu`, `facturas`
-- [ ] Constraint que impide doble reserva de la misma mesa en el mismo horario
-- [ ] Autenticación básica y roles (**administrador general** / cliente / mesero / cocina / admin restaurante)
+- [x] Tablas: `restaurantes`, `mesas`, `reservas`, `usuarios`, `pedidos`, `items_pedido`, `menu`, `facturas`
+- [x] Constraint que impide doble reserva de la misma mesa en el mismo horario
+- [x] Autenticación básica y roles (**administrador general** / cliente / mesero / cocina / admin restaurante)
 
 ## Fase 1.5 — Administrador general
 - [ ] Panel para crear un restaurante nuevo (datos generales + menú inicial)

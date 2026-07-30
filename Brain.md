@@ -56,6 +56,16 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-29] Fase 1 completa: modelo de datos y autenticación
+- 8 tablas en `backend/app/models/`: `usuarios`, `restaurantes`, `mesas`, `reservas`, `pedidos`, `items_pedido`, `menu`, `facturas`. Migración inicial con Alembic (`alembic/versions/072d96094a7e_...py`), aplicada y verificada contra Postgres real (`\dt`, `\d reservas`).
+- **Constraint anti-doble-reserva:** índice único parcial en Postgres — `UNIQUE (mesa_id, inicio) WHERE estado = 'activa'`. Reservas canceladas no bloquean el horario. Probado de verdad: segunda reserva activa mismo mesa/horario lanza `IntegrityError`; tras cancelar la primera, una nueva sí entra.
+- Gotcha resuelto: los `Enum` de SQLAlchemy por default guardan el *nombre* del miembro Python (`ACTIVA`) en vez del *valor* (`activa`) — rompía el índice parcial que comparaba contra `'activa'`. Fix: `values_callable=lambda e: [m.value for m in e]` en los 3 enums (`Rol`, `EstadoReserva`, `EstadoPedido`).
+- **Autenticación:** JWT (`pyjwt` + `bcrypt`, sin passlib por incompatibilidades conocidas con bcrypt>=4.1). `POST /auth/registro` (solo crea rol `cliente` — autoregistro), `POST /auth/login` (OAuth2 password flow), `GET /auth/me`. Dependencies en `app/core/deps.py`: `get_current_user` y `require_roles(*roles)`.
+- **Pendiente:** no hay endpoint para crear usuarios `mesero`/`cocina`/`admin_restaurante`/`admin_general` todavía — eso llega con el panel de administrador (Fase 1.5) y necesita bootstrap manual para el primer `admin_general`.
+- Gotcha de infraestructura: `pydantic-settings` con `env_file="../.env"` dependía del cwd del proceso — si uvicorn/alembic corrían desde otro directorio, cargaba el default silenciosamente en vez de fallar. Fix: ruta absoluta calculada con `Path(__file__)` en `config.py`.
+- Suite de tests con `pytest` + `httpx` (`backend/tests/`), corrida contra Postgres real (no mocks, consistente con la decisión de este proyecto). 6/6 verde.
+- Próximo paso: Fase 1.5 — panel de administrador general (alta de restaurante, CRUD de mesas, generación/regeneración de QR firmado).
+
 ### [2026-07-29] Fase 0 completa: estructura base backend/frontend
 - Se crea `backend/` (FastAPI + SQLAlchemy, `app/{core,models,routers,schemas}`) y `frontend/` (Vue 3 + Vite + TypeScript + Vue Router + Pinia).
 - `docker-compose.yml` levanta PostgreSQL local en puerto **5434** (5432 y 5433 ya ocupados por otros proyectos en esta máquina — ajustar si se despliega en otra máquina).
