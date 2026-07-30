@@ -1,3 +1,4 @@
+from app.models.categoria_menu import CategoriaMenu
 from app.models.factura import Factura
 from app.models.item_pedido import ItemPedido
 from app.models.menu import MenuItem
@@ -9,6 +10,7 @@ from app.models.sesion_mesa import SesionMesa
 from app.models.usuario import Rol, Usuario
 
 __all__ = [
+    "CategoriaMenu",
     "Factura",
     "ItemPedido",
     "MenuItem",

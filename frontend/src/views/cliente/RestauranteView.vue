@@ -10,6 +10,7 @@ import {
 } from '../../api/reservas'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
+import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,6 +34,10 @@ const form = reactive({
 
 const mesasFiltradas = computed(() =>
   mesas.value.filter((m) => m.capacidad >= form.personas),
+)
+
+const gruposMenu = computed(() =>
+  restaurante.value ? agruparMenuPorCategoria(restaurante.value.menu) : [],
 )
 
 async function cargar() {
@@ -140,16 +145,23 @@ onMounted(async () => {
         <section id="menu" class="columna-menu">
           <h2>Menú</h2>
           <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
-          <ul v-else class="lista-menu">
-            <li v-for="item in restaurante.menu" :key="item.id">
-              <img :src="imagenComida(item.id, 200, 200)" :alt="item.nombre" class="imagen-plato" />
-              <div class="info-plato">
-                <p class="nombre-plato">{{ item.nombre }}</p>
-                <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
-                <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
-              </div>
-            </li>
-          </ul>
+          <template v-else>
+            <div v-for="grupo in gruposMenu" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria">
+              <h3 v-if="gruposMenu.length > 1" class="titulo-categoria">
+                {{ grupo.categoria?.nombre ?? 'Otros' }}
+              </h3>
+              <ul class="lista-menu">
+                <li v-for="item in grupo.items" :key="item.id">
+                  <img :src="imagenComida(item.id, 200, 200)" :alt="item.nombre" class="imagen-plato" />
+                  <div class="info-plato">
+                    <p class="nombre-plato">{{ item.nombre }}</p>
+                    <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
+                    <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </template>
         </section>
 
         <aside id="reservar" class="columna-reserva">
@@ -325,6 +337,20 @@ onMounted(async () => {
 
 .columna-menu h2 {
   margin-bottom: var(--space-4);
+}
+
+.grupo-categoria + .grupo-categoria {
+  margin-top: var(--space-8);
+}
+
+.titulo-categoria {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-3);
 }
 
 .lista-menu {

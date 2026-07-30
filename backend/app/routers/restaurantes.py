@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.deps import require_roles
 from app.core.security import hash_password
 from app.models import (
+    CategoriaMenu,
     EstadoMesa,
     EstadoReserva,
     Factura,
@@ -26,6 +27,7 @@ from app.models import (
     Rol,
     Usuario,
 )
+from app.schemas.categoria import CategoriaCreate, CategoriaOut, CategoriaUpdate
 from app.schemas.mesa import MesaCreate, MesaOut
 from app.schemas.menu import MenuItemCreate, MenuItemOut, MenuItemUpdate
 from app.schemas.reserva import MesaDisponibilidad
@@ -75,6 +77,16 @@ def _get_mesa_o_404(db: Session, mesa_id: int) -> Mesa:
     return mesa
 
 
+def _categorias_de(db: Session, restaurante_id: int) -> list[CategoriaOut]:
+    categorias = (
+        db.query(CategoriaMenu)
+        .filter(CategoriaMenu.restaurante_id == restaurante_id)
+        .order_by(CategoriaMenu.orden)
+        .all()
+    )
+    return [CategoriaOut.model_validate(c) for c in categorias]
+
+
 def _verificar_acceso_restaurante(usuario: Usuario, restaurante_id: int) -> None:
     """admin_general gestiona cualquier restaurante; el resto de roles
     scopeados (admin_restaurante, mesero, cocina) solo el suyo — ver
@@ -107,8 +119,10 @@ def crear_restaurante(
     db.add(restaurante)
     db.flush()
 
+    # categoria_ids no aplica acá: recién se está creando el restaurante,
+    # todavía no puede tener categorías de menú propias.
     for item in datos.menu_inicial:
-        db.add(MenuItem(restaurante_id=restaurante.id, **item.model_dump()))
+        db.add(MenuItem(restaurante_id=restaurante.id, **item.model_dump(exclude={"categoria_ids"})))
 
     db.commit()
     db.refresh(restaurante)
@@ -121,6 +135,7 @@ def crear_restaurante(
         longitud=restaurante.longitud,
         created_at=restaurante.created_at,
         mesas_disponibles=False,
+        categorias_menu=[],
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
     )
 
@@ -153,6 +168,7 @@ def obtener_restaurante(restaurante_id: int, db: Session = Depends(get_db)):
         longitud=restaurante.longitud,
         created_at=restaurante.created_at,
         mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in restaurante.mesas),
+        categorias_menu=_categorias_de(db, restaurante.id),
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
     )
 
@@ -179,6 +195,7 @@ def editar_restaurante(
         longitud=restaurante.longitud,
         created_at=restaurante.created_at,
         mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in restaurante.mesas),
+        categorias_menu=_categorias_de(db, restaurante.id),
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
     )
 
@@ -273,7 +290,11 @@ def agregar_item_menu(
 ):
     _get_restaurante_o_404(db, restaurante_id)
     _verificar_acceso_restaurante(admin, restaurante_id)
-    item = MenuItem(restaurante_id=restaurante_id, **datos.model_dump())
+    categorias = _resolver_categorias(db, restaurante_id, datos.categoria_ids)
+    item = MenuItem(
+        restaurante_id=restaurante_id, **datos.model_dump(exclude={"categoria_ids"})
+    )
+    item.categorias = categorias
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -291,6 +312,25 @@ def _get_item_menu_o_404(db: Session, restaurante_id: int, item_id: int) -> Menu
     return item
 
 
+def _resolver_categorias(
+    db: Session, restaurante_id: int, categoria_ids: list[int]
+) -> list[CategoriaMenu]:
+    if not categoria_ids:
+        return []
+    categorias = (
+        db.query(CategoriaMenu)
+        .filter(CategoriaMenu.id.in_(categoria_ids), CategoriaMenu.restaurante_id == restaurante_id)
+        .all()
+    )
+    faltantes = set(categoria_ids) - {c.id for c in categorias}
+    if faltantes:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Categorías inválidas para este restaurante: {sorted(faltantes)}",
+        )
+    return categorias
+
+
 @router.put(
     "/restaurantes/{restaurante_id}/menu/{item_id}",
     response_model=MenuItemOut,
@@ -305,11 +345,105 @@ def editar_item_menu(
     _get_restaurante_o_404(db, restaurante_id)
     _verificar_acceso_restaurante(admin, restaurante_id)
     item = _get_item_menu_o_404(db, restaurante_id, item_id)
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    campos = datos.model_dump(exclude_unset=True, exclude={"categoria_ids"})
+    for campo, valor in campos.items():
         setattr(item, campo, valor)
+    if datos.categoria_ids is not None:
+        item.categorias = _resolver_categorias(db, restaurante_id, datos.categoria_ids)
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.post(
+    "/restaurantes/{restaurante_id}/categorias",
+    response_model=CategoriaOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_categoria(
+    restaurante_id: int,
+    datos: CategoriaCreate,
+    db: Session = Depends(get_db),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
+    siguiente_orden = (
+        db.query(func.coalesce(func.max(CategoriaMenu.orden), -1))
+        .filter(CategoriaMenu.restaurante_id == restaurante_id)
+        .scalar()
+        + 1
+    )
+    categoria = CategoriaMenu(restaurante_id=restaurante_id, nombre=datos.nombre, orden=siguiente_orden)
+    db.add(categoria)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ya existe una categoría con ese nombre")
+    db.refresh(categoria)
+    return categoria
+
+
+@router.get("/restaurantes/{restaurante_id}/categorias", response_model=list[CategoriaOut])
+def listar_categorias(restaurante_id: int, db: Session = Depends(get_db)):
+    _get_restaurante_o_404(db, restaurante_id)
+    return _categorias_de(db, restaurante_id)
+
+
+def _get_categoria_o_404(db: Session, restaurante_id: int, categoria_id: int) -> CategoriaMenu:
+    categoria = (
+        db.query(CategoriaMenu)
+        .filter(CategoriaMenu.id == categoria_id, CategoriaMenu.restaurante_id == restaurante_id)
+        .first()
+    )
+    if categoria is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
+    return categoria
+
+
+@router.put(
+    "/restaurantes/{restaurante_id}/categorias/{categoria_id}", response_model=CategoriaOut
+)
+def editar_categoria(
+    restaurante_id: int,
+    categoria_id: int,
+    datos: CategoriaUpdate,
+    db: Session = Depends(get_db),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
+    categoria = _get_categoria_o_404(db, restaurante_id, categoria_id)
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        setattr(categoria, campo, valor)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ya existe una categoría con ese nombre")
+    db.refresh(categoria)
+    return categoria
+
+
+@router.delete(
+    "/restaurantes/{restaurante_id}/categorias/{categoria_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def eliminar_categoria(
+    restaurante_id: int,
+    categoria_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
+    categoria = _get_categoria_o_404(db, restaurante_id, categoria_id)
+    # Borra la categoría, no los platos: solo desaparece la agrupación,
+    # los items siguen existiendo (SQLAlchemy limpia la tabla puente sola
+    # al borrar el lado "secondary" de la relación muchos-a-muchos).
+    db.delete(categoria)
+    db.commit()
 
 
 @router.post(

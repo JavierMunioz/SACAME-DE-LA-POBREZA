@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.categoria import CategoriaOut
 from app.schemas.menu import MenuItemCreate, MenuItemOut
 
 
@@ -40,6 +41,9 @@ class RestauranteOut(BaseModel):
 class RestauranteConMenu(RestauranteOut):
     latitud: float | None = None
     longitud: float | None = None
+    # Categorías del menú (ej. "Entradas", "Postres") — no confundir con
+    # `categoria` (el tipo de cocina del restaurante, ej. "Mariscos").
+    categorias_menu: list[CategoriaOut] = []
     menu: list[MenuItemOut]
 
 

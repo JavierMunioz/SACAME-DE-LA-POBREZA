@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Grid } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import {
   agregarItemMenu,
+  crearCategoria,
   crearMesa,
   crearPersonal,
+  editarCategoria,
   editarItemMenu,
   editarRestaurante,
+  eliminarCategoria,
   listarMesas,
   listarPersonal,
   obtenerEstadisticas,
   obtenerRestaurante,
   regenerarQr,
+  type Categoria,
   type Estadisticas,
   type Mesa,
   type MenuItem,
@@ -23,6 +27,7 @@ import {
   type RolPersonal,
 } from '../../api/restaurantes'
 import { obtenerUbicacion } from '../../api/mesas'
+import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
 import { useAuthStore } from '../../stores/auth'
 import AppTopNav from '../../components/AppTopNav.vue'
 
@@ -90,7 +95,85 @@ async function guardarUbicacion() {
 const dialogoMenuAbierto = ref(false)
 const guardandoMenu = ref(false)
 const itemMenuEditando = ref<MenuItem | null>(null)
-const formMenu = reactive({ nombre: '', descripcion: '', precio: 0, disponible: true })
+const formMenu = reactive({
+  nombre: '',
+  descripcion: '',
+  precio: 0,
+  disponible: true,
+  categoriaIds: [] as number[],
+})
+
+const dialogoCategoriaAbierto = ref(false)
+const guardandoCategoria = ref(false)
+const categoriaEditando = ref<Categoria | null>(null)
+const formCategoria = reactive({ nombre: '' })
+
+function abrirDialogoNuevaCategoria() {
+  categoriaEditando.value = null
+  formCategoria.nombre = ''
+  dialogoCategoriaAbierto.value = true
+}
+
+function abrirDialogoEditarCategoria(categoria: Categoria) {
+  categoriaEditando.value = categoria
+  formCategoria.nombre = categoria.nombre
+  dialogoCategoriaAbierto.value = true
+}
+
+async function guardarCategoria() {
+  if (!restaurante.value || !formCategoria.nombre.trim()) return
+  guardandoCategoria.value = true
+  try {
+    if (categoriaEditando.value) {
+      const actualizada = await editarCategoria(restauranteId, categoriaEditando.value.id, {
+        nombre: formCategoria.nombre,
+      })
+      const idx = restaurante.value.categorias_menu.findIndex((c) => c.id === actualizada.id)
+      if (idx !== -1) restaurante.value.categorias_menu[idx] = actualizada
+      // el nombre de la categoría también vive embebido en cada plato.
+      for (const item of restaurante.value.menu) {
+        const c = item.categorias.find((c) => c.id === actualizada.id)
+        if (c) c.nombre = actualizada.nombre
+      }
+      ElMessage.success('Categoría actualizada')
+    } else {
+      const nueva = await crearCategoria(restauranteId, formCategoria.nombre)
+      restaurante.value.categorias_menu.push(nueva)
+      ElMessage.success('Categoría creada')
+    }
+    dialogoCategoriaAbierto.value = false
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(status === 409 ? 'Ya existe una categoría con ese nombre' : 'No se pudo guardar la categoría')
+  } finally {
+    guardandoCategoria.value = false
+  }
+}
+
+async function borrarCategoria(categoria: Categoria) {
+  if (!restaurante.value) return
+  try {
+    await ElMessageBox.confirm(
+      `¿Borrar la categoría "${categoria.nombre}"? Los platos no se borran, solo dejan de estar agrupados ahí.`,
+      'Borrar categoría',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await eliminarCategoria(restauranteId, categoria.id)
+    restaurante.value.categorias_menu = restaurante.value.categorias_menu.filter(
+      (c) => c.id !== categoria.id,
+    )
+    for (const item of restaurante.value.menu) {
+      item.categorias = item.categorias.filter((c) => c.id !== categoria.id)
+    }
+    ElMessage.success('Categoría borrada')
+  } catch {
+    ElMessage.error('No se pudo borrar la categoría')
+  }
+}
 
 const dialogoPersonalAbierto = ref(false)
 const guardandoPersonal = ref(false)
@@ -158,6 +241,7 @@ function abrirDialogoNuevoPlato() {
   formMenu.descripcion = ''
   formMenu.precio = 0
   formMenu.disponible = true
+  formMenu.categoriaIds = []
   dialogoMenuAbierto.value = true
 }
 
@@ -167,6 +251,7 @@ function abrirDialogoEditarPlato(item: MenuItem) {
   formMenu.descripcion = item.descripcion ?? ''
   formMenu.precio = Number(item.precio)
   formMenu.disponible = item.disponible
+  formMenu.categoriaIds = item.categorias.map((c) => c.id)
   dialogoMenuAbierto.value = true
 }
 
@@ -180,6 +265,7 @@ async function guardarPlato() {
         descripcion: formMenu.descripcion || undefined,
         precio: formMenu.precio,
         disponible: formMenu.disponible,
+        categoria_ids: formMenu.categoriaIds,
       })
       const idx = restaurante.value.menu.findIndex((m) => m.id === actualizado.id)
       if (idx !== -1) restaurante.value.menu[idx] = actualizado
@@ -190,6 +276,7 @@ async function guardarPlato() {
         descripcion: formMenu.descripcion || undefined,
         precio: formMenu.precio,
         disponible: formMenu.disponible,
+        categoria_ids: formMenu.categoriaIds,
       })
       restaurante.value.menu.push(nuevo)
       ElMessage.success('Plato agregado')
@@ -201,6 +288,10 @@ async function guardarPlato() {
     guardandoMenu.value = false
   }
 }
+
+const gruposMenuAdmin = computed(() =>
+  restaurante.value ? agruparMenuPorCategoria(restaurante.value.menu) : [],
+)
 
 const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
   libre: 'Libre',
@@ -361,22 +452,48 @@ onUnmounted(() => {
 
       <section class="seccion">
         <div class="encabezado-seccion">
+          <h2>Categorías del menú</h2>
+          <el-button size="small" @click="abrirDialogoNuevaCategoria">Nueva categoría</el-button>
+        </div>
+        <el-empty
+          v-if="restaurante.categorias_menu.length === 0"
+          description="Sin categorías — el menú se muestra en una sola lista"
+          :image-size="48"
+        />
+        <div v-else class="lista-chips-categoria">
+          <span v-for="categoria in restaurante.categorias_menu" :key="categoria.id" class="chip-categoria">
+            {{ categoria.nombre }}
+            <button type="button" class="boton-chip" @click="abrirDialogoEditarCategoria(categoria)">✎</button>
+            <button type="button" class="boton-chip" @click="borrarCategoria(categoria)">✕</button>
+          </span>
+        </div>
+      </section>
+
+      <section class="seccion">
+        <div class="encabezado-seccion">
           <h2>Menú</h2>
           <el-button size="small" @click="abrirDialogoNuevoPlato">Agregar plato</el-button>
         </div>
         <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
-        <ul v-else class="lista-menu">
-          <li v-for="item in restaurante.menu" :key="item.id">
-            <span class="fila-plato-nombre">
-              {{ item.nombre }}
-              <el-tag v-if="!item.disponible" type="info" size="small">No disponible</el-tag>
-            </span>
-            <span class="fila-plato-acciones">
-              <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
-              <el-button size="small" text @click="abrirDialogoEditarPlato(item)">Editar</el-button>
-            </span>
-          </li>
-        </ul>
+        <template v-else>
+          <div v-for="grupo in gruposMenuAdmin" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria-admin">
+            <h3 v-if="gruposMenuAdmin.length > 1" class="titulo-categoria-admin">
+              {{ grupo.categoria?.nombre ?? 'Sin categoría' }}
+            </h3>
+            <ul class="lista-menu">
+              <li v-for="item in grupo.items" :key="item.id">
+                <span class="fila-plato-nombre">
+                  {{ item.nombre }}
+                  <el-tag v-if="!item.disponible" type="info" size="small">No disponible</el-tag>
+                </span>
+                <span class="fila-plato-acciones">
+                  <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+                  <el-button size="small" text @click="abrirDialogoEditarPlato(item)">Editar</el-button>
+                </span>
+              </li>
+            </ul>
+          </div>
+        </template>
       </section>
 
       <section class="seccion">
@@ -457,10 +574,38 @@ onUnmounted(() => {
         <el-form-item label="Disponible">
           <el-switch v-model="formMenu.disponible" />
         </el-form-item>
+        <el-form-item label="Categorías">
+          <el-select v-model="formMenu.categoriaIds" multiple style="width: 100%" placeholder="Ninguna">
+            <el-option
+              v-for="categoria in restaurante?.categorias_menu ?? []"
+              :key="categoria.id"
+              :label="categoria.nombre"
+              :value="categoria.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogoMenuAbierto = false">Cancelar</el-button>
         <el-button type="primary" :loading="guardandoMenu" @click="guardarPlato">
+          Guardar
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="dialogoCategoriaAbierto"
+      :title="categoriaEditando ? 'Editar categoría' : 'Nueva categoría'"
+      width="340px"
+    >
+      <el-form :model="formCategoria" label-position="top">
+        <el-form-item label="Nombre">
+          <el-input v-model="formCategoria.nombre" placeholder="ej. Entradas" @keyup.enter="guardarCategoria" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoCategoriaAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoCategoria" @click="guardarCategoria">
           Guardar
         </el-button>
       </template>
@@ -638,6 +783,50 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+}
+
+.lista-chips-categoria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip-categoria {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  background: var(--surface-muted);
+  border-radius: var(--radius-full);
+  font-size: 0.825rem;
+  font-weight: 500;
+}
+
+.boton-chip {
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.boton-chip:hover {
+  color: var(--text-primary);
+}
+
+.grupo-categoria-admin + .grupo-categoria-admin {
+  margin-top: var(--space-6);
+}
+
+.titulo-categoria-admin {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
 }
 
 .grid-qr {

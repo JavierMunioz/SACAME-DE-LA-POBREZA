@@ -1,11 +1,18 @@
 import { api } from './client'
 
+export interface Categoria {
+  id: number
+  nombre: string
+  orden: number
+}
+
 export interface MenuItem {
   id: number
   nombre: string
   descripcion: string | null
   precio: string
   disponible: boolean
+  categorias: Categoria[]
 }
 
 export interface MenuItemCreate {
@@ -13,6 +20,7 @@ export interface MenuItemCreate {
   descripcion?: string
   precio: number
   disponible?: boolean
+  categoria_ids?: number[]
 }
 
 export interface Restaurante {
@@ -27,6 +35,7 @@ export interface Restaurante {
 export interface RestauranteConMenu extends Restaurante {
   latitud: number | null
   longitud: number | null
+  categorias_menu: Categoria[]
   menu: MenuItem[]
 }
 
@@ -93,6 +102,7 @@ export interface MenuItemUpdate {
   descripcion?: string
   precio?: number
   disponible?: boolean
+  categoria_ids?: number[]
 }
 
 export async function agregarItemMenu(
@@ -113,6 +123,29 @@ export async function editarItemMenu(
     payload,
   )
   return data
+}
+
+export async function crearCategoria(restauranteId: number, nombre: string): Promise<Categoria> {
+  const { data } = await api.post<Categoria>(`/restaurantes/${restauranteId}/categorias`, {
+    nombre,
+  })
+  return data
+}
+
+export async function editarCategoria(
+  restauranteId: number,
+  categoriaId: number,
+  payload: { nombre?: string; orden?: number },
+): Promise<Categoria> {
+  const { data } = await api.put<Categoria>(
+    `/restaurantes/${restauranteId}/categorias/${categoriaId}`,
+    payload,
+  )
+  return data
+}
+
+export async function eliminarCategoria(restauranteId: number, categoriaId: number): Promise<void> {
+  await api.delete(`/restaurantes/${restauranteId}/categorias/${categoriaId}`)
 }
 
 export async function crearRestaurante(payload: {

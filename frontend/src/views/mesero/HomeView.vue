@@ -15,6 +15,7 @@ import { generarFactura, type Factura } from '../../api/facturas'
 import { liberarMesa, ocuparMesaStaff } from '../../api/mesas'
 import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
+import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
 import AppTopNav from '../../components/AppTopNav.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
@@ -233,6 +234,8 @@ function abrirDialogoPedido(mesa: Mesa) {
   for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
   dialogoPedidoAbierto.value = true
 }
+
+const gruposMenuPedido = computed(() => agruparMenuPorCategoria(menu.value))
 
 const itemsSeleccionados = computed(() =>
   Object.entries(cantidades)
@@ -508,25 +511,32 @@ onUnmounted(() => clearInterval(intervalo))
     <el-dialog v-model="dialogoPedidoAbierto" title="Tomar pedido" width="420px">
       <p v-if="mesaPedido" class="dialogo-mesa">Mesa {{ mesaPedido.numero }}</p>
       <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
-      <ul v-else class="lista-menu-pedido">
-        <li v-for="item in menu" :key="item.id" class="fila-menu-pedido">
-          <div class="fila-menu-pedido-linea">
-            <div>
-              <p class="nombre-item-menu">{{ item.nombre }}</p>
-              <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
-            </div>
-            <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
-          </div>
-          <el-input
-            v-if="(cantidades[item.id] ?? 0) > 0"
-            v-model="observacionesPorItem[item.id]"
-            placeholder="Observaciones (ej: sin lechuga)"
-            size="small"
-            class="input-observaciones-item"
-            maxlength="200"
-          />
-        </li>
-      </ul>
+      <div v-else class="contenedor-menu-pedido">
+        <div v-for="grupo in gruposMenuPedido" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria-pedido">
+          <h4 v-if="gruposMenuPedido.length > 1" class="titulo-categoria-pedido">
+            {{ grupo.categoria?.nombre ?? 'Otros' }}
+          </h4>
+          <ul class="lista-menu-pedido">
+            <li v-for="item in grupo.items" :key="item.id" class="fila-menu-pedido">
+              <div class="fila-menu-pedido-linea">
+                <div>
+                  <p class="nombre-item-menu">{{ item.nombre }}</p>
+                  <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                </div>
+                <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
+              </div>
+              <el-input
+                v-if="(cantidades[item.id] ?? 0) > 0"
+                v-model="observacionesPorItem[item.id]"
+                placeholder="Observaciones (ej: sin lechuga)"
+                size="small"
+                class="input-observaciones-item"
+                maxlength="200"
+              />
+            </li>
+          </ul>
+        </div>
+      </div>
       <template #footer>
         <el-button @click="dialogoPedidoAbierto = false">Cancelar</el-button>
         <el-button
@@ -860,12 +870,29 @@ onUnmounted(() => clearInterval(intervalo))
   color: var(--color-warning-text);
 }
 
+.contenedor-menu-pedido {
+  margin-top: var(--space-2);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.grupo-categoria-pedido + .grupo-categoria-pedido {
+  margin-top: var(--space-4);
+}
+
+.titulo-categoria-pedido {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
 .lista-menu-pedido {
   list-style: none;
   padding: 0;
-  margin: var(--space-2) 0 0;
-  max-height: 360px;
-  overflow-y: auto;
+  margin: 0;
 }
 
 .fila-menu-pedido {

@@ -13,6 +13,7 @@ import {
 } from '../api/mesas'
 import { crearPedido } from '../api/pedidos'
 import { useAuthStore } from '../stores/auth'
+import { agruparMenuPorCategoria } from '../utils/menuCategorias'
 
 const route = useRoute()
 const router = useRouter()
@@ -214,6 +215,8 @@ function restar(menuItemId: number) {
   enviarCambioItem(menuItemId, carrito[menuItemId] - 1)
 }
 
+const gruposMenu = computed(() => (info.value ? agruparMenuPorCategoria(info.value.menu) : []))
+
 const totalItems = computed(() => Object.values(carrito).reduce((a, b) => a + b, 0))
 
 const totalPrecio = computed(() => {
@@ -288,25 +291,30 @@ onUnmounted(desconectarCarritoEnVivo)
 
           <section class="menu">
             <h2>Menú</h2>
-            <div v-for="item in info.menu" :key="item.id" class="fila-menu">
-              <div class="info-plato">
-                <p class="nombre-plato">{{ item.nombre }}</p>
-                <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
-                <p class="precio-plato">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
-              </div>
-              <div class="controles-cantidad">
-                <button
-                  type="button"
-                  class="boton-stepper"
-                  :disabled="!carrito[item.id]"
-                  @click="restar(item.id)"
-                >
-                  −
-                </button>
-                <span class="cantidad">{{ carrito[item.id] ?? 0 }}</span>
-                <button type="button" class="boton-stepper boton-stepper-primario" @click="sumar(item.id)">
-                  +
-                </button>
+            <div v-for="grupo in gruposMenu" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria">
+              <h3 v-if="gruposMenu.length > 1" class="titulo-categoria">
+                {{ grupo.categoria?.nombre ?? 'Otros' }}
+              </h3>
+              <div v-for="item in grupo.items" :key="item.id" class="fila-menu">
+                <div class="info-plato">
+                  <p class="nombre-plato">{{ item.nombre }}</p>
+                  <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
+                  <p class="precio-plato">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                </div>
+                <div class="controles-cantidad">
+                  <button
+                    type="button"
+                    class="boton-stepper"
+                    :disabled="!carrito[item.id]"
+                    @click="restar(item.id)"
+                  >
+                    −
+                  </button>
+                  <span class="cantidad">{{ carrito[item.id] ?? 0 }}</span>
+                  <button type="button" class="boton-stepper boton-stepper-primario" @click="sumar(item.id)">
+                    +
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -522,6 +530,20 @@ onUnmounted(desconectarCarritoEnVivo)
 
 .menu h2 {
   margin-bottom: var(--space-4);
+}
+
+.grupo-categoria + .grupo-categoria {
+  margin-top: var(--space-6);
+}
+
+.titulo-categoria {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
 }
 
 .fila-menu {

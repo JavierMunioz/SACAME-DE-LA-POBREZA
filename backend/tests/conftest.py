@@ -7,6 +7,7 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.main import app
 from app.models import (
+    CategoriaMenu,
     Factura,
     ItemPedido,
     MenuItem,
@@ -18,6 +19,7 @@ from app.models import (
     SesionMesa,
     Usuario,
 )
+from app.models.categoria_menu import menu_item_categoria
 
 
 @pytest.fixture
@@ -83,6 +85,23 @@ def restaurante_con_mesa():
     db.query(SesionMesa).filter(SesionMesa.mesa_id == mesa.id).delete()
     db.query(Factura).filter(Factura.mesa_id == mesa.id).delete()
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
+    # Tabla puente ítem-categoría: un DELETE en bloque (Query.delete) no
+    # sigue la relación muchos-a-muchos, hay que vaciarla a mano antes de
+    # borrar ítems y categorías o la FK bloquea el resto del cleanup.
+    item_ids = [
+        i.id for i in db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).all()
+    ]
+    categoria_ids = [
+        c.id
+        for c in db.query(CategoriaMenu).filter(CategoriaMenu.restaurante_id == restaurante.id).all()
+    ]
+    db.execute(
+        menu_item_categoria.delete().where(
+            menu_item_categoria.c.menu_item_id.in_(item_ids)
+            | menu_item_categoria.c.categoria_id.in_(categoria_ids)
+        )
+    )
+    db.query(CategoriaMenu).filter(CategoriaMenu.restaurante_id == restaurante.id).delete()
     db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).delete()
     db.query(Mesa).filter(Mesa.restaurante_id == restaurante.id).delete()
     # Personal (mesero/cocina/admin_restaurante) creado para este restaurante
