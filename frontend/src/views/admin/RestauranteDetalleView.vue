@@ -5,11 +5,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../../api/client'
 import {
   crearMesa,
+  crearPersonal,
   listarMesas,
+  listarPersonal,
   obtenerRestaurante,
   regenerarQr,
   type Mesa,
+  type Personal,
   type RestauranteConMenu,
+  type RolPersonal,
 } from '../../api/restaurantes'
 
 const route = useRoute()
@@ -18,10 +22,20 @@ const restauranteId = Number(route.params.id)
 
 const restaurante = ref<RestauranteConMenu | null>(null)
 const mesas = ref<Mesa[]>([])
+const personal = ref<Personal[]>([])
 const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 const form = reactive({ numero: 1, capacidad: 4 })
+
+const dialogoPersonalAbierto = ref(false)
+const guardandoPersonal = ref(false)
+const formPersonal = reactive({
+  nombre: '',
+  email: '',
+  password: '',
+  rol: 'mesero' as RolPersonal,
+})
 
 // blob URLs de los QR autenticados: mesa_id -> object URL
 const qrUrls = reactive<Record<number, string>>({})
@@ -33,14 +47,45 @@ async function cargarQr(mesa: Mesa) {
 
 async function cargar() {
   cargando.value = true
-  const [r, m] = await Promise.all([
+  const [r, m, p] = await Promise.all([
     obtenerRestaurante(restauranteId),
     listarMesas(restauranteId),
+    listarPersonal(restauranteId),
   ])
   restaurante.value = r
   mesas.value = m
+  personal.value = p
   cargando.value = false
   await Promise.all(m.map(cargarQr))
+}
+
+function abrirDialogoPersonal() {
+  formPersonal.nombre = ''
+  formPersonal.email = ''
+  formPersonal.password = ''
+  formPersonal.rol = 'mesero'
+  dialogoPersonalAbierto.value = true
+}
+
+async function guardarPersonal() {
+  guardandoPersonal.value = true
+  try {
+    const nuevo = await crearPersonal(restauranteId, { ...formPersonal })
+    personal.value.push(nuevo)
+    dialogoPersonalAbierto.value = false
+    ElMessage.success('Cuenta creada')
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(status === 409 ? 'Ese email ya está registrado' : 'No se pudo crear la cuenta')
+  } finally {
+    guardandoPersonal.value = false
+  }
+}
+
+const etiquetaRol: Record<RolPersonal, string> = {
+  mesero: 'Mesero',
+  cocina: 'Cocina',
+  admin_restaurante: 'Admin de restaurante',
 }
 
 async function guardarMesa() {
@@ -130,6 +175,21 @@ onUnmounted(() => {
           </el-card>
         </div>
       </section>
+
+      <section>
+        <div class="encabezado-seccion">
+          <h2>Personal</h2>
+          <el-button size="small" @click="abrirDialogoPersonal">Nueva cuenta</el-button>
+        </div>
+        <el-empty v-if="personal.length === 0" description="Sin mesero ni cocina todavía" />
+        <el-table v-else :data="personal">
+          <el-table-column prop="nombre" label="Nombre" />
+          <el-table-column prop="email" label="Email" />
+          <el-table-column label="Rol">
+            <template #default="{ row }">{{ etiquetaRol[row.rol as RolPersonal] }}</template>
+          </el-table-column>
+        </el-table>
+      </section>
     </template>
 
     <el-dialog v-model="dialogoAbierto" title="Nueva mesa" width="360px">
@@ -144,6 +204,33 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="dialogoAbierto = false">Cancelar</el-button>
         <el-button type="primary" :loading="guardando" @click="guardarMesa">Crear</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoPersonalAbierto" title="Nueva cuenta de personal" width="380px">
+      <el-form :model="formPersonal" label-position="top">
+        <el-form-item label="Nombre">
+          <el-input v-model="formPersonal.nombre" />
+        </el-form-item>
+        <el-form-item label="Email">
+          <el-input v-model="formPersonal.email" type="email" />
+        </el-form-item>
+        <el-form-item label="Contraseña">
+          <el-input v-model="formPersonal.password" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="Rol">
+          <el-select v-model="formPersonal.rol" style="width: 100%">
+            <el-option label="Mesero" value="mesero" />
+            <el-option label="Cocina" value="cocina" />
+            <el-option label="Admin de restaurante" value="admin_restaurante" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoPersonalAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoPersonal" @click="guardarPersonal">
+          Crear
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -169,6 +256,17 @@ onUnmounted(() => {
 
 section {
   margin-bottom: 2.5rem;
+}
+
+.encabezado-seccion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.encabezado-seccion h2 {
+  margin: 0;
 }
 
 .lista-menu {

@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore, type Rol } from '../stores/auth'
+import { rolAHome, useAuthStore, type Rol } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -81,7 +81,11 @@ router.beforeEach(async (to) => {
     }
   }
   if (rolRequerido && auth.usuario?.rol !== rolRequerido) {
-    return false
+    // No lo mandamos a login (ya está autenticado) ni lo dejamos con
+    // pantalla en blanco (pasaba con `return false` en carga directa,
+    // sin ruta anterior a la que volver): lo mandamos al home de su rol.
+    const home = auth.usuario ? rolAHome[auth.usuario.rol] : '/login'
+    return to.path === home ? false : home
   }
   return true
 })

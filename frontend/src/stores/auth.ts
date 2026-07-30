@@ -4,6 +4,14 @@ import { api } from '../api/client'
 
 export type Rol = 'admin_general' | 'admin_restaurante' | 'cliente' | 'mesero' | 'cocina'
 
+export const rolAHome: Record<Rol, string> = {
+  admin_general: '/admin',
+  admin_restaurante: '/admin',
+  cliente: '/cliente',
+  mesero: '/mesero',
+  cocina: '/cocina',
+}
+
 interface Usuario {
   id: number
   nombre: string

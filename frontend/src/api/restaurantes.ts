@@ -75,3 +75,26 @@ export async function regenerarQr(mesaId: number): Promise<Mesa> {
 export function urlImagenQr(mesaId: number): string {
   return `${api.defaults.baseURL}/mesas/${mesaId}/qr.png`
 }
+
+export type RolPersonal = 'mesero' | 'cocina' | 'admin_restaurante'
+
+export interface Personal {
+  id: number
+  nombre: string
+  email: string
+  rol: RolPersonal
+  restaurante_id: number | null
+}
+
+export async function listarPersonal(restauranteId: number): Promise<Personal[]> {
+  const { data } = await api.get<Personal[]>(`/restaurantes/${restauranteId}/personal`)
+  return data
+}
+
+export async function crearPersonal(
+  restauranteId: number,
+  payload: { nombre: string; email: string; password: string; rol: RolPersonal },
+): Promise<Personal> {
+  const { data } = await api.post<Personal>(`/restaurantes/${restauranteId}/personal`, payload)
+  return data
+}

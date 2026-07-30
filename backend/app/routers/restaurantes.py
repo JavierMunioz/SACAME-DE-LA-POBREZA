@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_roles
-from app.models import EstadoReserva, MenuItem, Mesa, Reserva, Restaurante, Rol
+from app.core.security import hash_password
+from app.models import EstadoReserva, MenuItem, Mesa, Reserva, Restaurante, Rol, Usuario
 from app.schemas.mesa import MesaCreate, MesaOut
 from app.schemas.menu import MenuItemCreate, MenuItemOut
 from app.schemas.reserva import MesaDisponibilidad
 from app.schemas.restaurante import RestauranteConMenu, RestauranteCreate, RestauranteOut
+from app.schemas.usuario import PersonalCreate, UsuarioOut
 
 router = APIRouter(tags=["restaurantes"])
 
@@ -111,6 +113,50 @@ def agregar_item_menu(
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.post(
+    "/restaurantes/{restaurante_id}/personal",
+    response_model=UsuarioOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_personal(
+    restaurante_id: int,
+    datos: PersonalCreate,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    usuario = Usuario(
+        nombre=datos.nombre,
+        email=datos.email,
+        password_hash=hash_password(datos.password),
+        rol=datos.rol,
+        restaurante_id=restaurante_id,
+    )
+    db.add(usuario)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email ya registrado")
+    db.refresh(usuario)
+    return usuario
+
+
+@router.get("/restaurantes/{restaurante_id}/personal", response_model=list[UsuarioOut])
+def listar_personal(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    return (
+        db.query(Usuario)
+        .filter(Usuario.restaurante_id == restaurante_id)
+        .order_by(Usuario.nombre)
+        .all()
+    )
 
 
 @router.post(

@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.models.pedido import EstadoPedido
 
@@ -18,21 +18,20 @@ class PedidoCreate(BaseModel):
 
 
 class ItemPedidoOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     menu_item_id: int
+    menu_item_nombre: str
     cantidad: int
     precio_unitario: Decimal
     observaciones: str | None
 
 
 class PedidoOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     mesa_id: int
+    mesa_numero: int
     cliente_id: int | None
     estado: EstadoPedido
     created_at: datetime
+    confirmado_at: datetime | None
     items: list[ItemPedidoOut]
