@@ -16,11 +16,11 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Autenticación básica y roles (**administrador general** / cliente / mesero / cocina / admin restaurante)
 
 ## Fase 1.5 — Administrador general
-- [ ] Panel para crear un restaurante nuevo (datos generales + menú inicial)
-- [ ] CRUD de mesas por restaurante (número, capacidad)
-- [ ] Generación de código QR único por mesa (URL con `restaurante_id` + `mesa_id`)
-- [ ] Regenerar/invalidar QR de una mesa (si se pierde o daña el impreso)
-- [ ] Vista para descargar/imprimir el lote de QRs de un restaurante
+- [x] Panel para crear un restaurante nuevo (datos generales + menú inicial)
+- [x] CRUD de mesas por restaurante (número, capacidad)
+- [x] Generación de código QR único por mesa (URL con `restaurante_id` + `mesa_id`)
+- [x] Regenerar/invalidar QR de una mesa (si se pierde o daña el impreso)
+- [x] Vista para descargar/imprimir el lote de QRs de un restaurante
 
 ## Fase 2 — Flujo del cliente
 - [ ] Listado de restaurantes afiliados

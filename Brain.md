@@ -56,6 +56,17 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-29] Fase 1.5 completa: panel de administrador general
+- Backend: `app/routers/restaurantes.py` — crear restaurante (con menú inicial opcional), listar/obtener restaurante, agregar ítem de menú, crear mesa, listar mesas, regenerar QR, servir el QR como PNG real (librería `qrcode`). Todo protegido con `require_roles(Rol.ADMIN_GENERAL)` excepto el listado público de restaurantes (útil para Fase 2).
+- `scripts/crear_admin_general.py`: no hay endpoint HTTP para crear el primer `admin_general` a propósito — es un bootstrap manual por CLI, no una acción de la app.
+- Frontend: la taste skill (`design-taste-frontend`) señaló que un panel admin está **fuera de su alcance** (está pensada para landing pages, no dashboards) y recomienda un design system real. Se eligió **Element Plus** (Vue 3) en vez de Tailwind a mano. Se limpió el CSS boilerplate del scaffold de Vite (grid de 2 columnas centrado que rompía cualquier layout real) y se forzó tema claro (no se implementó dark mode para el panel, fuera de alcance para una herramienta interna).
+- Login real: `stores/auth.ts` ahora maneja JWT de verdad (antes era un stub que solo guardaba el rol sin autenticar). Token en `localStorage`, interceptor de axios en `api/client.ts` lo inyecta en cada request. Guard del router (`router/index.ts`) exige token + rol correcto o redirige a `/login`.
+- El PNG del QR (`GET /mesas/{id}/qr.png`) está protegido por rol admin, así que no puede cargarse con `<img src="...">` directo (el navegador no manda el header `Authorization`). Se resolvió trayéndolo como blob autenticado vía axios y usando `URL.createObjectURL`.
+- **Gotcha de infraestructura (dos veces en la misma sesión):** puerto 8000 también estaba ocupado en esta máquina (contenedor Docker `waygo_api` de otro proyecto). Se fijó el backend de este proyecto en el puerto **8001** (`VITE_API_BASE_URL` default en el frontend, instrucciones en CONTRIBUTING.md). Sumado a Postgres en 5434, esta máquina tiene varios proyectos compitiendo por los puertos por defecto — repasar `docker ps` / `lsof -iTCP -sTCP:LISTEN` antes de asumir un puerto libre.
+- **Gotcha de CORS:** FastAPI sin `CORSMiddleware` deja pasar la request en el servidor (log mostraba `200 OK`) pero el navegador bloquea la respuesta para JS — se ve como un fallo silencioso desde el frontend. Se agregó `CORSMiddleware` en `main.py` con origen `settings.frontend_base_url`.
+- Probado end-to-end en navegador real (Chrome vía MCP): login, crear restaurante con menú, crear dos mesas, ver sus QR (imágenes distintas), regenerar QR de una mesa y confirmar que cambia.
+- Próximo paso: Fase 2 — flujo del cliente (listado de restaurantes, reserva, escaneo de QR contra el `qr_token`, menú + carrito). El endpoint de canje del QR (validar `token` contra la mesa) todavía no existe, se construye en Fase 2.
+
 ### [2026-07-29] Fase 1 completa: modelo de datos y autenticación
 - 8 tablas en `backend/app/models/`: `usuarios`, `restaurantes`, `mesas`, `reservas`, `pedidos`, `items_pedido`, `menu`, `facturas`. Migración inicial con Alembic (`alembic/versions/072d96094a7e_...py`), aplicada y verificada contra Postgres real (`\dt`, `\d reservas`).
 - **Constraint anti-doble-reserva:** índice único parcial en Postgres — `UNIQUE (mesa_id, inicio) WHERE estado = 'activa'`. Reservas canceladas no bloquean el horario. Probado de verdad: segunda reserva activa mismo mesa/horario lanza `IntegrityError`; tras cancelar la primera, una nueva sí entra.

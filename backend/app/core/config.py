@@ -17,5 +17,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 8
 
+    # Base del link que codifica el QR de cada mesa (ver Brain.md).
+    frontend_base_url: str = "http://localhost:5173"
+
 
 settings = Settings()
