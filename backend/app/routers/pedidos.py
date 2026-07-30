@@ -96,16 +96,18 @@ def crear_pedido(
 
 @router.get("", response_model=list[PedidoOut])
 def listar_pedidos(
+    estado: EstadoPedido | None = None,
     db: Session = Depends(get_db),
-    mesero: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+    usuario: Usuario = Depends(require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
 ):
-    pedidos = (
-        db.query(Pedido)
-        .join(Mesa)
-        .filter(Mesa.restaurante_id == mesero.restaurante_id)
-        .order_by(Pedido.created_at)
-        .all()
-    )
+    query = db.query(Pedido).join(Mesa).filter(Mesa.restaurante_id == usuario.restaurante_id)
+    if estado is not None:
+        query = query.filter(Pedido.estado == estado)
+
+    # Cocina necesita orden FIFO por hora de llegada a cocina (confirmado_at),
+    # no por hora de creación del pedido (ver Readme.md).
+    orden = Pedido.confirmado_at if estado == EstadoPedido.CONFIRMADO else Pedido.created_at
+    pedidos = query.order_by(orden).all()
     return [_pedido_a_out(p) for p in pedidos]
 
 
