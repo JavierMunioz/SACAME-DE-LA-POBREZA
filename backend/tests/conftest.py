@@ -6,7 +6,17 @@ from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.main import app
-from app.models import ItemPedido, MenuItem, Mesa, Pedido, Reserva, Restaurante, Rol, Usuario
+from app.models import (
+    Factura,
+    ItemPedido,
+    MenuItem,
+    Mesa,
+    Pedido,
+    Reserva,
+    Restaurante,
+    Rol,
+    Usuario,
+)
 
 
 @pytest.fixture
@@ -65,6 +75,7 @@ def restaurante_con_mesa():
             synchronize_session=False
         )
         db.query(Pedido).filter(Pedido.id.in_(pedido_ids)).delete(synchronize_session=False)
+    db.query(Factura).filter(Factura.mesa_id == mesa.id).delete()
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
     db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).delete()
     db.query(Mesa).filter(Mesa.restaurante_id == restaurante.id).delete()

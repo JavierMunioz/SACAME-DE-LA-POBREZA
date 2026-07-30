@@ -41,9 +41,9 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Detalle completo del pedido (mesa, productos, observaciones)
 
 ## Fase 5 — Facturación
-- [ ] Generar voucher de factura desde la comanda principal
-- [ ] Opción de incluir propina o no
-- [ ] Botón "Factura electrónica" visible pero deshabilitado (en gris) — no se desarrolla en esta fase
+- [x] Generar voucher de factura desde la comanda principal
+- [x] Opción de incluir propina o no
+- [x] Botón "Factura electrónica" visible pero deshabilitado (en gris) — no se desarrolla en esta fase
 
 ## Fase 6 — Endurecimiento para producción
 - [ ] Manejo de errores y reconexión en tiempo real (mesero/cocina)
