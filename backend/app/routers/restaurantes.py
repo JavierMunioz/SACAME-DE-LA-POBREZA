@@ -27,7 +27,7 @@ from app.models import (
     Usuario,
 )
 from app.schemas.mesa import MesaCreate, MesaOut
-from app.schemas.menu import MenuItemCreate, MenuItemOut
+from app.schemas.menu import MenuItemCreate, MenuItemOut, MenuItemUpdate
 from app.schemas.reserva import MesaDisponibilidad
 from app.schemas.restaurante import (
     EstadisticasRestauranteOut,
@@ -69,6 +69,18 @@ def _get_mesa_o_404(db: Session, mesa_id: int) -> Mesa:
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
     return mesa
+
+
+def _verificar_acceso_restaurante(usuario: Usuario, restaurante_id: int) -> None:
+    """admin_general gestiona cualquier restaurante; el resto de roles
+    scopeados (admin_restaurante, mesero, cocina) solo el suyo — ver
+    Brain.md, bug donde admin_restaurante quedaba con cuenta creada pero
+    sin ninguna página real que la usara."""
+    if (
+        usuario.rol in (Rol.ADMIN_RESTAURANTE, Rol.MESERO, Rol.COCINA)
+        and usuario.restaurante_id != restaurante_id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso sobre este restaurante")
 
 
 @router.post(
@@ -139,7 +151,7 @@ def obtener_restaurante(restaurante_id: int, db: Session = Depends(get_db)):
 def obtener_estadisticas(
     restaurante_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     """Métricas reales del dashboard admin — nada fabricado. `revenue_ayer`
     compara el total facturado del día completo de ayer contra lo que va
@@ -147,6 +159,7 @@ def obtener_estadisticas(
     pena para lo que se usa acá). No hay inventario ni notificaciones:
     el dominio no tiene esos conceptos."""
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     ahora = datetime.now(timezone.utc)
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
     inicio_ayer = inicio_hoy - timedelta(days=1)
@@ -218,11 +231,44 @@ def agregar_item_menu(
     restaurante_id: int,
     datos: MenuItemCreate,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     item = MenuItem(restaurante_id=restaurante_id, **datos.model_dump())
     db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def _get_item_menu_o_404(db: Session, restaurante_id: int, item_id: int) -> MenuItem:
+    item = (
+        db.query(MenuItem)
+        .filter(MenuItem.id == item_id, MenuItem.restaurante_id == restaurante_id)
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ítem de menú no encontrado")
+    return item
+
+
+@router.put(
+    "/restaurantes/{restaurante_id}/menu/{item_id}",
+    response_model=MenuItemOut,
+)
+def editar_item_menu(
+    restaurante_id: int,
+    item_id: int,
+    datos: MenuItemUpdate,
+    db: Session = Depends(get_db),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+):
+    _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
+    item = _get_item_menu_o_404(db, restaurante_id, item_id)
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        setattr(item, campo, valor)
     db.commit()
     db.refresh(item)
     return item
@@ -237,9 +283,10 @@ def crear_personal(
     restaurante_id: int,
     datos: PersonalCreate,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     usuario = Usuario(
         nombre=datos.nombre,
         email=datos.email,
@@ -261,9 +308,10 @@ def crear_personal(
 def listar_personal(
     restaurante_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     return (
         db.query(Usuario)
         .filter(Usuario.restaurante_id == restaurante_id)
@@ -281,9 +329,10 @@ def crear_mesa(
     restaurante_id: int,
     datos: MesaCreate,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     mesa = Mesa(
         restaurante_id=restaurante_id,
         numero=datos.numero,
@@ -307,13 +356,14 @@ def crear_mesa(
 def listar_mesas(
     restaurante_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE, Rol.MESERO)),
 ):
     # Import acá adentro (no al tope del módulo) para evitar un ciclo de
     # imports entre routers/mesas.py y routers/restaurantes.py.
     from app.routers.mesas import _expirar_reservas_vencidas, _reserva_propia_y_libre
 
     _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
     mesas = (
         db.query(Mesa).filter(Mesa.restaurante_id == restaurante_id).order_by(Mesa.numero).all()
     )
@@ -379,9 +429,10 @@ def disponibilidad_mesas(
 def obtener_qr_png(
     mesa_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     mesa = _get_mesa_o_404(db, mesa_id)
+    _verificar_acceso_restaurante(admin, mesa.restaurante_id)
     url = _qr_url(mesa.restaurante_id, mesa.id, mesa.qr_token)
     imagen = qrcode.make(url)
     buffer = io.BytesIO()
@@ -394,9 +445,10 @@ def obtener_qr_png(
 def regenerar_qr(
     mesa_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
 ):
     mesa = _get_mesa_o_404(db, mesa_id)
+    _verificar_acceso_restaurante(admin, mesa.restaurante_id)
     # El token viejo queda invalidado al sobreescribirse: cualquier QR
     # impreso con el token anterior deja de resolver a esta mesa.
     mesa.qr_token = secrets.token_urlsafe(24)

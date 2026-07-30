@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Tickets } from '@element-plus/icons-vue'
-import { cancelarPedido, confirmarPedido, listarPedidos, type Pedido } from '../../api/pedidos'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Tickets, Grid } from '@element-plus/icons-vue'
+import { cancelarPedido, confirmarPedido, crearPedido, listarPedidos, type Pedido } from '../../api/pedidos'
 import { generarFactura, type Factura } from '../../api/facturas'
+import { liberarMesa, ocuparMesaStaff } from '../../api/mesas'
+import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import AppTopNav from '../../components/AppTopNav.vue'
 
@@ -20,9 +22,26 @@ let intervalo: ReturnType<typeof setInterval> | undefined
 const router = useRouter()
 const auth = useAuthStore()
 
+const vista = ref<'pedidos' | 'mesas'>('pedidos')
+const mesas = ref<Mesa[]>([])
+const menu = ref<MenuItem[]>([])
+const cargandoMesas = ref(true)
+const procesandoMesa = ref<number | null>(null)
+
 async function cargar() {
   pedidos.value = await listarPedidos()
   cargando.value = false
+}
+
+async function cargarMesas() {
+  if (!auth.usuario?.restaurante_id) return
+  const [m, r] = await Promise.all([
+    listarMesas(auth.usuario.restaurante_id),
+    obtenerRestaurante(auth.usuario.restaurante_id),
+  ])
+  mesas.value = m
+  menu.value = r.menu
+  cargandoMesas.value = false
 }
 
 const ESTADOS_ACTIVOS = ['pendiente', 'confirmado', 'preparando', 'listo']
@@ -118,9 +137,103 @@ function imprimir() {
   window.print()
 }
 
+const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
+  libre: 'Libre',
+  reservada: 'Reservada',
+  ocupada: 'Ocupada',
+}
+
+const dialogoOcuparAbierto = ref(false)
+const mesaAOcupar = ref<Mesa | null>(null)
+const nombreOcupar = ref('')
+
+function abrirDialogoOcupar(mesa: Mesa) {
+  mesaAOcupar.value = mesa
+  nombreOcupar.value = ''
+  dialogoOcuparAbierto.value = true
+}
+
+async function confirmarOcupar() {
+  if (!mesaAOcupar.value) return
+  procesandoMesa.value = mesaAOcupar.value.id
+  try {
+    await ocuparMesaStaff(mesaAOcupar.value.id, nombreOcupar.value || undefined)
+    ElMessage.success(`Mesa ${mesaAOcupar.value.numero} ocupada`)
+    dialogoOcuparAbierto.value = false
+    await cargarMesas()
+  } catch {
+    ElMessage.error('No se pudo ocupar la mesa')
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
+async function liberar(mesa: Mesa) {
+  try {
+    await ElMessageBox.confirm(
+      `¿Liberar la mesa ${mesa.numero}? Esto no genera factura.`,
+      'Liberar mesa',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  procesandoMesa.value = mesa.id
+  try {
+    await liberarMesa(mesa.id)
+    ElMessage.success(`Mesa ${mesa.numero} liberada`)
+    await cargarMesas()
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(
+      status === 409
+        ? 'Esta mesa tiene pedidos sin facturar. Facturá primero.'
+        : 'No se pudo liberar la mesa',
+    )
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
+const dialogoPedidoAbierto = ref(false)
+const mesaPedido = ref<Mesa | null>(null)
+const cantidades = reactive<Record<number, number>>({})
+const enviandoPedido = ref(false)
+
+function abrirDialogoPedido(mesa: Mesa) {
+  mesaPedido.value = mesa
+  for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
+  dialogoPedidoAbierto.value = true
+}
+
+const itemsSeleccionados = computed(() =>
+  Object.entries(cantidades)
+    .filter(([, cantidad]) => cantidad > 0)
+    .map(([menu_item_id, cantidad]) => ({ menu_item_id: Number(menu_item_id), cantidad })),
+)
+
+async function enviarPedidoMesero() {
+  if (!mesaPedido.value || itemsSeleccionados.value.length === 0) return
+  enviandoPedido.value = true
+  try {
+    await crearPedido(mesaPedido.value.id, itemsSeleccionados.value)
+    ElMessage.success(`Pedido tomado para mesa ${mesaPedido.value.numero}`)
+    dialogoPedidoAbierto.value = false
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo tomar el pedido')
+  } finally {
+    enviandoPedido.value = false
+  }
+}
+
 onMounted(() => {
   cargar()
-  intervalo = setInterval(cargar, INTERVALO_POLLING_MS)
+  cargarMesas()
+  intervalo = setInterval(() => {
+    cargar()
+    if (vista.value === 'mesas') cargarMesas()
+  }, INTERVALO_POLLING_MS)
 })
 onUnmounted(() => clearInterval(intervalo))
 </script>
@@ -129,20 +242,34 @@ onUnmounted(() => clearInterval(intervalo))
   <div class="pagina">
     <AppTopNav subtitulo="Comanda" @salir="cerrarSesion">
       <template #nav>
-        <span class="nav-item nav-item--activo">
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ 'nav-item--activo': vista === 'pedidos' }"
+          @click="vista = 'pedidos'"
+        >
           <el-icon :size="16"><Tickets /></el-icon>
           <span>Pedidos</span>
-        </span>
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ 'nav-item--activo': vista === 'mesas' }"
+          @click="vista = 'mesas'; cargarMesas()"
+        >
+          <el-icon :size="16"><Grid /></el-icon>
+          <span>Mesas</span>
+        </button>
       </template>
     </AppTopNav>
 
     <main class="contenido-principal">
       <div class="titulo-seccion">
-        <h1>Comanda</h1>
+        <h1>{{ vista === 'pedidos' ? 'Comanda' : 'Mesas' }}</h1>
         <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
       </div>
 
-      <div class="contenido">
+      <div v-if="vista === 'pedidos'" class="contenido">
         <div v-if="mesasParaCerrar.length > 0" class="franja-cerrar">
           <span class="franja-etiqueta">Listas para cerrar</span>
           <div class="franja-botones">
@@ -212,6 +339,59 @@ onUnmounted(() => clearInterval(intervalo))
           </article>
         </div>
       </div>
+
+      <div v-else class="contenido">
+        <div v-if="cargandoMesas" class="grid-mesas">
+          <el-skeleton v-for="i in 3" :key="i" animated :rows="3" class="tarjeta-skeleton" />
+        </div>
+        <div v-else-if="mesas.length === 0" class="estado-vacio">
+          <p class="estado-vacio-titulo">Sin mesas todavía</p>
+          <p class="estado-vacio-texto">Las mesas las crea el admin del restaurante.</p>
+        </div>
+        <div v-else class="grid-mesas">
+          <article v-for="mesa in mesas" :key="mesa.id" class="tarjeta-mesa">
+            <div class="cabecera-pedido">
+              <span class="mesa">Mesa {{ mesa.numero }}</span>
+              <span class="badge-estado" :class="`badge-estado-mesa--${mesa.estado}`">
+                {{ etiquetaEstadoMesa[mesa.estado] }}
+              </span>
+            </div>
+            <p class="capacidad-mesa">{{ mesa.capacidad }} personas</p>
+            <div class="acciones-pedido">
+              <el-button
+                v-if="mesa.estado === 'libre'"
+                type="primary"
+                size="large"
+                class="boton-accion"
+                :loading="procesandoMesa === mesa.id"
+                @click="abrirDialogoOcupar(mesa)"
+              >
+                Ocupar
+              </el-button>
+              <template v-else-if="mesa.estado === 'ocupada'">
+                <el-button
+                  plain
+                  size="large"
+                  class="boton-accion"
+                  :loading="procesandoMesa === mesa.id"
+                  @click="liberar(mesa)"
+                >
+                  Liberar
+                </el-button>
+                <el-button
+                  type="primary"
+                  size="large"
+                  class="boton-accion"
+                  @click="abrirDialogoPedido(mesa)"
+                >
+                  Pedido
+                </el-button>
+              </template>
+              <el-tag v-else type="info" round>Reservada</el-tag>
+            </div>
+          </article>
+        </div>
+      </div>
     </main>
 
     <el-dialog v-model="dialogoFacturaAbierto" title="Cerrar mesa" width="360px">
@@ -258,6 +438,47 @@ onUnmounted(() => clearInterval(intervalo))
       <template #footer>
         <el-button @click="voucherAbierto = false">Cerrar</el-button>
         <el-button type="primary" @click="imprimir">Imprimir</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoOcuparAbierto" title="Ocupar mesa" width="360px">
+      <p v-if="mesaAOcupar" class="dialogo-mesa">Mesa {{ mesaAOcupar.numero }}</p>
+      <el-input
+        v-model="nombreOcupar"
+        placeholder="Nombre (opcional)"
+        size="large"
+        maxlength="80"
+      />
+      <template #footer>
+        <el-button @click="dialogoOcuparAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="procesandoMesa === mesaAOcupar?.id" @click="confirmarOcupar">
+          Ocupar
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoPedidoAbierto" title="Tomar pedido" width="420px">
+      <p v-if="mesaPedido" class="dialogo-mesa">Mesa {{ mesaPedido.numero }}</p>
+      <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
+      <ul v-else class="lista-menu-pedido">
+        <li v-for="item in menu" :key="item.id" class="fila-menu-pedido">
+          <div>
+            <p class="nombre-item-menu">{{ item.nombre }}</p>
+            <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+          </div>
+          <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
+        </li>
+      </ul>
+      <template #footer>
+        <el-button @click="dialogoPedidoAbierto = false">Cancelar</el-button>
+        <el-button
+          type="primary"
+          :loading="enviandoPedido"
+          :disabled="itemsSeleccionados.length === 0"
+          @click="enviarPedidoMesero"
+        >
+          Enviar pedido
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -529,5 +750,71 @@ onUnmounted(() => clearInterval(intervalo))
 .boton-factura-electronica {
   width: 100%;
   margin-top: var(--space-4);
+}
+
+.grid-mesas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.tarjeta-mesa {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+}
+
+.capacidad-mesa {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-4);
+}
+
+.badge-estado-mesa--libre {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.badge-estado-mesa--ocupada {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary-hover);
+}
+
+.badge-estado-mesa--reservada {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.lista-menu-pedido {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.fila-menu-pedido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fila-menu-pedido:last-child {
+  border-bottom: none;
+}
+
+.nombre-item-menu {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.precio-item-menu {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
 }
 </style>

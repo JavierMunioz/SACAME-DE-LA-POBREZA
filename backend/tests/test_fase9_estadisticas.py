@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+from app.core.database import SessionLocal
+from app.models import Reserva
+
 
 def _crear_confirmar_y_facturar(client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cantidad=1):
     mesa_id = restaurante_con_mesa["mesa"].id
@@ -80,11 +83,20 @@ def test_listar_mesas_admin_muestra_reservada(
     restaurante_id = restaurante_con_mesa["restaurante"].id
     ahora = datetime.now(timezone.utc)
 
-    client.post(
-        "/reservas",
-        json={"mesa_id": mesa.id, "inicio": ahora.isoformat(), "duracion_minutos": 90},
-        headers=cliente_autenticado["headers"],
+    # Directo en la base: la regla de 2h de anticipación impediría
+    # reservar "para ahora" desde la API, pero acá se prueba el estado
+    # tri-estado del listado de mesas, no esa regla.
+    db = SessionLocal()
+    db.add(
+        Reserva(
+            mesa_id=mesa.id,
+            cliente_id=cliente_autenticado["usuario_id"],
+            inicio=ahora,
+            duracion_minutos=90,
+        )
     )
+    db.commit()
+    db.close()
 
     r = client.get(
         f"/restaurantes/{restaurante_id}/mesas", headers=admin_autenticado["headers"]

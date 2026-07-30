@@ -69,6 +69,33 @@ export async function obtenerRestaurante(id: number): Promise<RestauranteConMenu
   return data
 }
 
+export interface MenuItemUpdate {
+  nombre?: string
+  descripcion?: string
+  precio?: number
+  disponible?: boolean
+}
+
+export async function agregarItemMenu(
+  restauranteId: number,
+  payload: MenuItemCreate,
+): Promise<MenuItem> {
+  const { data } = await api.post<MenuItem>(`/restaurantes/${restauranteId}/menu`, payload)
+  return data
+}
+
+export async function editarItemMenu(
+  restauranteId: number,
+  itemId: number,
+  payload: MenuItemUpdate,
+): Promise<MenuItem> {
+  const { data } = await api.put<MenuItem>(
+    `/restaurantes/${restauranteId}/menu/${itemId}`,
+    payload,
+  )
+  return data
+}
+
 export async function crearRestaurante(payload: {
   nombre: string
   descripcion?: string

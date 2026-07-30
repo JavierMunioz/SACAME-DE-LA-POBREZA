@@ -55,9 +55,11 @@ async def crear_pedido(
     usuario: Usuario | None = Depends(get_current_user_opcional),
 ):
     # Sin cuenta también se puede pedir (ver Readme: mesa libre sin reserva
-    # se puede usar sin fricción). Si hay sesión, tiene que ser un cliente:
-    # mesero/cocina/admin no generan pedidos a través de este endpoint.
-    if usuario is not None and usuario.rol != Rol.CLIENTE:
+    # se puede usar sin fricción). Mesero/admin_restaurante también pueden
+    # pedir directo por la mesa (ver Brain.md: cliente sentado sin forma
+    # de pedir desde su celular). Cocina/admin_general no generan pedidos.
+    ROLES_STAFF_PEDIDO = (Rol.MESERO, Rol.ADMIN_RESTAURANTE)
+    if usuario is not None and usuario.rol not in (Rol.CLIENTE, *ROLES_STAFF_PEDIDO):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta acción")
 
     mesa = db.get(Mesa, datos.mesa_id)
@@ -65,6 +67,43 @@ async def crear_pedido(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
     if not datos.items:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
+
+    if usuario is not None and usuario.rol in ROLES_STAFF_PEDIDO:
+        if mesa.restaurante_id != usuario.restaurante_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso sobre esta mesa")
+        pedido = Pedido(
+            mesa_id=mesa.id,
+            nombre_invitado=f"Tomado por {usuario.nombre}",
+        )
+        db.add(pedido)
+        db.flush()
+        menu_ids = [item.menu_item_id for item in datos.items]
+        menu_items = (
+            db.query(MenuItem)
+            .filter(MenuItem.id.in_(menu_ids), MenuItem.restaurante_id == mesa.restaurante_id)
+            .all()
+        )
+        menu_por_id = {m.id: m for m in menu_items}
+        faltantes = set(menu_ids) - menu_por_id.keys()
+        if faltantes:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
+            )
+        for item in datos.items:
+            menu_item = menu_por_id[item.menu_item_id]
+            db.add(
+                ItemPedido(
+                    pedido_id=pedido.id,
+                    menu_item_id=menu_item.id,
+                    cantidad=item.cantidad,
+                    precio_unitario=menu_item.precio,
+                    observaciones=item.observaciones,
+                )
+            )
+        db.commit()
+        db.refresh(pedido)
+        return _pedido_a_out(pedido)
 
     # Solo quien abrió la mesa puede enviar el pedido — a los que se
     # sumaron con el código les llega el mismo carrito en vivo por

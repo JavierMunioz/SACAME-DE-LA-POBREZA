@@ -57,6 +57,20 @@ export async function ocuparMesa(
   return data
 }
 
+export async function ocuparMesaStaff(
+  mesaId: number,
+  nombreInvitado?: string,
+): Promise<SesionMesa> {
+  const { data } = await api.post<SesionMesa>(`/mesas/${mesaId}/ocupar-staff`, {
+    nombre_invitado: nombreInvitado,
+  })
+  return data
+}
+
+export async function liberarMesa(mesaId: number): Promise<void> {
+  await api.post(`/mesas/${mesaId}/liberar`)
+}
+
 export async function unirseAMesa(
   mesaId: number,
   qrToken: string,

@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+from app.core.database import SessionLocal
+from app.models import Reserva
+
 
 def test_ocupar_mesa_la_bloquea_para_otro_invitado(client, restaurante_con_mesa):
     mesa = restaurante_con_mesa["mesa"]
@@ -111,15 +114,24 @@ def test_reserva_con_check_in_ocupa_la_mesa(client, restaurante_con_mesa, client
     mesa = restaurante_con_mesa["mesa"]
     ahora = datetime.now(timezone.utc)
 
-    reserva = client.post(
-        "/reservas",
-        json={"mesa_id": mesa.id, "inicio": ahora.isoformat(), "duracion_minutos": 90},
-        headers=cliente_autenticado["headers"],
-    ).json()
+    # Directo en la base (no vía POST /reservas): la regla de 2h de
+    # anticipación impediría reservar "para ahora" desde la API, pero acá
+    # se prueba el check-in, no esa regla.
+    db = SessionLocal()
+    reserva = Reserva(
+        mesa_id=mesa.id,
+        cliente_id=cliente_autenticado["usuario_id"],
+        inicio=ahora,
+        duracion_minutos=90,
+    )
+    db.add(reserva)
+    db.commit()
+    reserva_id = reserva.id
+    db.close()
 
     r = client.post(
         f"/mesas/{mesa.id}/ocupar",
-        json={"qr_token": mesa.qr_token, "reserva_id": reserva["id"]},
+        json={"qr_token": mesa.qr_token, "reserva_id": reserva_id},
         headers=cliente_autenticado["headers"],
     )
     assert r.status_code == 201

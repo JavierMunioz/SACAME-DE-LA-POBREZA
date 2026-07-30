@@ -6,9 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
-from app.core.deps import get_current_user_opcional
-from app.models import EstadoMesa, EstadoReserva, Mesa, Reserva, Rol, SesionMesa, Usuario
-from app.schemas.mesa import MesaQrInfo, OcuparMesaRequest, SesionMesaOut, UnirseMesaRequest
+from app.core.deps import get_current_user_opcional, require_roles
+from app.models import EstadoMesa, EstadoPedido, EstadoReserva, Mesa, Pedido, Reserva, Rol, SesionMesa, Usuario
+from app.schemas.mesa import (
+    MesaQrInfo,
+    OcuparMesaRequest,
+    OcuparMesaStaffRequest,
+    SesionMesaOut,
+    UnirseMesaRequest,
+)
 from app.schemas.menu import MenuItemOut
 
 router = APIRouter(prefix="/mesas", tags=["mesas"])
@@ -66,6 +72,13 @@ def _reserva_propia_y_libre(
             if usuario is not None and r.cliente_id == usuario.id:
                 reserva_propia = r
     return reserva_propia, mesa_libre_ahora
+
+
+def _get_mesa_o_404(db: Session, mesa_id: int) -> Mesa:
+    mesa = db.get(Mesa, mesa_id)
+    if mesa is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
+    return mesa
 
 
 def _sesion_activa(db: Session, mesa_id: int) -> SesionMesa | None:
@@ -211,6 +224,85 @@ def unirse_a_mesa(
         sesion.cliente.nombre if sesion.cliente_id is not None else (sesion.nombre_invitado or "")
     )
     return _sesion_a_out(sesion, nombre, incluir_token_dueno=False)
+
+
+def _verificar_mesa_del_restaurante(usuario: Usuario, mesa: Mesa) -> None:
+    if mesa.restaurante_id != usuario.restaurante_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso sobre esta mesa")
+
+
+@router.post("/{mesa_id}/ocupar-staff", response_model=SesionMesaOut, status_code=status.HTTP_201_CREATED)
+def ocupar_mesa_staff(
+    mesa_id: int,
+    datos: OcuparMesaStaffRequest,
+    db: Session = Depends(get_db),
+    staff: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    """Apertura manual desde el panel de mesero: para sentar a alguien que
+    no tiene forma de escanear el QR. Abre la misma SesionMesa que abriría
+    el cliente, así el QR queda consistente si alguien más lo escanea
+    después (ver Brain.md)."""
+    mesa = _get_mesa_o_404(db, mesa_id)
+    _verificar_mesa_del_restaurante(staff, mesa)
+
+    if _sesion_activa(db, mesa.id) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta mesa ya está ocupada")
+
+    nombre_invitado = (datos.nombre_invitado or "").strip() or f"Mesa {mesa.numero}"
+    sesion = SesionMesa(
+        mesa_id=mesa.id,
+        nombre_invitado=nombre_invitado,
+        token=secrets.token_urlsafe(32),
+        token_dueno=secrets.token_urlsafe(32),
+        codigo_acceso=f"{secrets.randbelow(10000):04d}",
+    )
+    db.add(sesion)
+    mesa.estado = EstadoMesa.OCUPADA
+    db.commit()
+    db.refresh(sesion)
+    return _sesion_a_out(sesion, nombre_invitado, incluir_token_dueno=True)
+
+
+@router.post("/{mesa_id}/liberar", status_code=status.HTTP_200_OK)
+def liberar_mesa(
+    mesa_id: int,
+    db: Session = Depends(get_db),
+    staff: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    """Libera una mesa sin facturar: cierra la sesión abierta (si hay) y
+    la deja libre. Pensado para sesiones abandonadas (cliente escaneó,
+    se fue sin pedir) — si hay pedidos ya confirmados sin facturar, se
+    frena para no perder esa venta; primero hay que facturar."""
+    mesa = _get_mesa_o_404(db, mesa_id)
+    _verificar_mesa_del_restaurante(staff, mesa)
+
+    pedidos_sin_facturar = (
+        db.query(Pedido)
+        .filter(
+            Pedido.mesa_id == mesa.id,
+            Pedido.estado.in_(
+                [
+                    EstadoPedido.PENDIENTE,
+                    EstadoPedido.CONFIRMADO,
+                    EstadoPedido.PREPARANDO,
+                    EstadoPedido.LISTO,
+                ]
+            ),
+        )
+        .count()
+    )
+    if pedidos_sin_facturar > 0:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Esta mesa tiene pedidos sin facturar. Facturá primero para liberarla.",
+        )
+
+    sesion = _sesion_activa(db, mesa.id)
+    if sesion is not None:
+        sesion.cerrada_at = datetime.now(timezone.utc)
+    mesa.estado = EstadoMesa.LIBRE
+    db.commit()
+    return {"mesa_id": mesa.id, "estado": "libre"}
 
 
 @router.websocket("/{mesa_id}/ws")

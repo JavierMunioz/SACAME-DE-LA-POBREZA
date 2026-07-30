@@ -5,8 +5,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Grid } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import {
+  agregarItemMenu,
   crearMesa,
   crearPersonal,
+  editarItemMenu,
   listarMesas,
   listarPersonal,
   obtenerEstadisticas,
@@ -14,6 +16,7 @@ import {
   regenerarQr,
   type Estadisticas,
   type Mesa,
+  type MenuItem,
   type Personal,
   type RestauranteConMenu,
   type RolPersonal,
@@ -35,6 +38,11 @@ const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 const form = reactive({ numero: 1, capacidad: 4 })
+
+const dialogoMenuAbierto = ref(false)
+const guardandoMenu = ref(false)
+const itemMenuEditando = ref<MenuItem | null>(null)
+const formMenu = reactive({ nombre: '', descripcion: '', precio: 0, disponible: true })
 
 const dialogoPersonalAbierto = ref(false)
 const guardandoPersonal = ref(false)
@@ -93,6 +101,56 @@ async function guardarPersonal() {
     ElMessage.error(status === 409 ? 'Ese email ya está registrado' : 'No se pudo crear la cuenta')
   } finally {
     guardandoPersonal.value = false
+  }
+}
+
+function abrirDialogoNuevoPlato() {
+  itemMenuEditando.value = null
+  formMenu.nombre = ''
+  formMenu.descripcion = ''
+  formMenu.precio = 0
+  formMenu.disponible = true
+  dialogoMenuAbierto.value = true
+}
+
+function abrirDialogoEditarPlato(item: MenuItem) {
+  itemMenuEditando.value = item
+  formMenu.nombre = item.nombre
+  formMenu.descripcion = item.descripcion ?? ''
+  formMenu.precio = Number(item.precio)
+  formMenu.disponible = item.disponible
+  dialogoMenuAbierto.value = true
+}
+
+async function guardarPlato() {
+  if (!restaurante.value) return
+  guardandoMenu.value = true
+  try {
+    if (itemMenuEditando.value) {
+      const actualizado = await editarItemMenu(restauranteId, itemMenuEditando.value.id, {
+        nombre: formMenu.nombre,
+        descripcion: formMenu.descripcion || undefined,
+        precio: formMenu.precio,
+        disponible: formMenu.disponible,
+      })
+      const idx = restaurante.value.menu.findIndex((m) => m.id === actualizado.id)
+      if (idx !== -1) restaurante.value.menu[idx] = actualizado
+      ElMessage.success('Plato actualizado')
+    } else {
+      const nuevo = await agregarItemMenu(restauranteId, {
+        nombre: formMenu.nombre,
+        descripcion: formMenu.descripcion || undefined,
+        precio: formMenu.precio,
+        disponible: formMenu.disponible,
+      })
+      restaurante.value.menu.push(nuevo)
+      ElMessage.success('Plato agregado')
+    }
+    dialogoMenuAbierto.value = false
+  } catch {
+    ElMessage.error('No se pudo guardar el plato')
+  } finally {
+    guardandoMenu.value = false
   }
 }
 
@@ -162,9 +220,17 @@ onUnmounted(() => {
 
 <template>
   <div class="pagina">
-    <AppTopNav subtitulo="Admin General" @salir="cerrarSesion">
+    <AppTopNav
+      :subtitulo="auth.usuario?.rol === 'admin_restaurante' ? 'Admin de restaurante' : 'Admin General'"
+      @salir="cerrarSesion"
+    >
       <template #nav>
-        <button type="button" class="nav-item" @click="volver">
+        <button
+          v-if="auth.usuario?.rol === 'admin_general'"
+          type="button"
+          class="nav-item"
+          @click="volver"
+        >
           <el-icon :size="16"><Grid /></el-icon>
           <span>Restaurantes</span>
         </button>
@@ -236,12 +302,21 @@ onUnmounted(() => {
       </div>
 
       <section class="seccion">
-        <h2>Menú</h2>
+        <div class="encabezado-seccion">
+          <h2>Menú</h2>
+          <el-button size="small" @click="abrirDialogoNuevoPlato">Agregar plato</el-button>
+        </div>
         <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
         <ul v-else class="lista-menu">
           <li v-for="item in restaurante.menu" :key="item.id">
-            <span>{{ item.nombre }}</span>
-            <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+            <span class="fila-plato-nombre">
+              {{ item.nombre }}
+              <el-tag v-if="!item.disponible" type="info" size="small">No disponible</el-tag>
+            </span>
+            <span class="fila-plato-acciones">
+              <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+              <el-button size="small" text @click="abrirDialogoEditarPlato(item)">Editar</el-button>
+            </span>
           </li>
         </ul>
       </section>
@@ -303,6 +378,33 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="dialogoAbierto = false">Cancelar</el-button>
         <el-button type="primary" :loading="guardando" @click="guardarMesa">Crear</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="dialogoMenuAbierto"
+      :title="itemMenuEditando ? 'Editar plato' : 'Nuevo plato'"
+      width="380px"
+    >
+      <el-form :model="formMenu" label-position="top">
+        <el-form-item label="Nombre">
+          <el-input v-model="formMenu.nombre" />
+        </el-form-item>
+        <el-form-item label="Descripción">
+          <el-input v-model="formMenu.descripcion" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="Precio">
+          <el-input-number v-model="formMenu.precio" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="Disponible">
+          <el-switch v-model="formMenu.disponible" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoMenuAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoMenu" @click="guardarPlato">
+          Guardar
+        </el-button>
       </template>
     </el-dialog>
 
@@ -409,6 +511,18 @@ onUnmounted(() => {
 .precio {
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.fila-plato-nombre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fila-plato-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
 
 .grid-qr {

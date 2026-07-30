@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +12,10 @@ from app.schemas.reserva import ReservaCreate, ReservaOut
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
+# Ninguna reserva de último minuto: la cocina/mesero necesitan margen
+# real para prepararse (ver pedido del usuario en Brain.md).
+HORAS_MINIMAS_ANTICIPACION = 2
+
 
 @router.post("", response_model=ReservaOut, status_code=status.HTTP_201_CREATED)
 def crear_reserva(
@@ -19,6 +25,13 @@ def crear_reserva(
 ):
     if db.get(Mesa, datos.mesa_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
+
+    inicio = datos.inicio if datos.inicio.tzinfo else datos.inicio.replace(tzinfo=timezone.utc)
+    if inicio < datetime.now(timezone.utc) + timedelta(hours=HORAS_MINIMAS_ANTICIPACION):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Las reservas deben hacerse con al menos {HORAS_MINIMAS_ANTICIPACION} horas de anticipación",
+        )
 
     # Libera primero cualquier reserva vencida sin check-in: si no, una
     # reserva "zombi" (activa mas sin nadie) bloquearía este horario para

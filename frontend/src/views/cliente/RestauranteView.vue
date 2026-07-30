@@ -52,6 +52,10 @@ async function buscarDisponibilidad() {
   }
 }
 
+// Ninguna reserva de último minuto: cocina/mesero necesitan margen real
+// para prepararse (regla real del negocio, no un límite técnico).
+const HORAS_MINIMAS_ANTICIPACION = 2
+
 async function reservar(mesa: MesaDisponibilidad) {
   // Reservar necesita identidad (para saludar por nombre al escanear el
   // QR); pedir sin reserva no la necesita. Frenamos acá, no antes.
@@ -59,15 +63,23 @@ async function reservar(mesa: MesaDisponibilidad) {
     router.push(`/login?redirect=${encodeURIComponent(route.fullPath)}`)
     return
   }
+  const inicioDate = new Date(`${form.fecha}T${form.hora}:00`)
+  const limite = new Date(Date.now() + HORAS_MINIMAS_ANTICIPACION * 60 * 60 * 1000)
+  if (inicioDate < limite) {
+    ElMessage.error(`Las reservas deben hacerse con al menos ${HORAS_MINIMAS_ANTICIPACION} horas de anticipación`)
+    return
+  }
   reservando.value = mesa.mesa_id
   try {
-    const inicio = new Date(`${form.fecha}T${form.hora}:00`).toISOString()
-    await crearReserva({ mesa_id: mesa.mesa_id, inicio })
+    await crearReserva({ mesa_id: mesa.mesa_id, inicio: inicioDate.toISOString() })
     ElMessage.success(`Mesa ${mesa.numero} reservada. Llegá 15 min antes.`)
     await buscarDisponibilidad()
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status
-    ElMessage.error(status === 409 ? 'Esa mesa ya se reservó, elegí otra' : 'No se pudo reservar')
+    if (status === 409) ElMessage.error('Esa mesa ya se reservó, elegí otra')
+    else if (status === 422)
+      ElMessage.error(`Las reservas deben hacerse con al menos ${HORAS_MINIMAS_ANTICIPACION} horas de anticipación`)
+    else ElMessage.error('No se pudo reservar')
   } finally {
     reservando.value = null
   }

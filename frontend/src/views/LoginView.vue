@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KnifeFork } from '@element-plus/icons-vue'
-import { rolAHome, useAuthStore } from '../stores/auth'
+import { homeDeUsuario, useAuthStore } from '../stores/auth'
 
 const form = reactive({ email: '', password: '' })
 const recordar = ref(true)
@@ -18,7 +18,7 @@ async function enviar() {
   try {
     await auth.login(form.email, form.password, recordar.value)
     const destino =
-      (route.query.redirect as string) || (auth.usuario ? rolAHome[auth.usuario.rol] : '/')
+      (route.query.redirect as string) || (auth.usuario ? homeDeUsuario(auth.usuario) : '/')
     router.push(destino)
   } catch {
     error.value = 'Email o contraseña incorrectos.'

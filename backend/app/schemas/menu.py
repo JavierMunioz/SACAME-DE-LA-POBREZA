@@ -10,6 +10,13 @@ class MenuItemCreate(BaseModel):
     disponible: bool = True
 
 
+class MenuItemUpdate(BaseModel):
+    nombre: str | None = None
+    descripcion: str | None = None
+    precio: Decimal | None = None
+    disponible: bool | None = None
+
+
 class MenuItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

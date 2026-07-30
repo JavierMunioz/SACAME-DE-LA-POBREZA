@@ -46,6 +46,13 @@ class OcuparMesaRequest(BaseModel):
     reserva_id: int | None = None
 
 
+class OcuparMesaStaffRequest(BaseModel):
+    """Apertura manual por mesero/admin: sin QR, para sentar a alguien
+    que no puede o no quiere usar el celular (ver Brain.md)."""
+
+    nombre_invitado: str | None = None
+
+
 class UnirseMesaRequest(BaseModel):
     qr_token: str
     codigo_acceso: str
