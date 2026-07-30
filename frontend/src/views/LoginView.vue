@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useAuthStore } from '../stores/auth'
+import { rolAHome, useAuthStore } from '../stores/auth'
 
 const form = reactive({ email: '', password: '' })
 const cargando = ref(false)
@@ -10,20 +10,13 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const rolAHome: Record<string, string> = {
-  admin_general: '/admin',
-  admin_restaurante: '/admin',
-  cliente: '/cliente',
-  mesero: '/mesero',
-  cocina: '/cocina',
-}
-
 async function enviar() {
   cargando.value = true
   try {
     await auth.login(form.email, form.password)
     const destino =
-      (route.query.redirect as string) || rolAHome[auth.usuario?.rol ?? ''] || '/'
+      (route.query.redirect as string) ||
+      (auth.usuario ? rolAHome[auth.usuario.rol] : '/')
     router.push(destino)
   } catch {
     ElMessage.error('Email o contraseña incorrectos')

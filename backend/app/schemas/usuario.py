@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.models.usuario import Rol
@@ -16,6 +18,14 @@ class UsuarioOut(BaseModel):
     nombre: str
     email: EmailStr
     rol: Rol
+    restaurante_id: int | None = None
+
+
+class PersonalCreate(BaseModel):
+    nombre: str
+    email: EmailStr
+    password: str
+    rol: Literal[Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE]
 
 
 class Token(BaseModel):

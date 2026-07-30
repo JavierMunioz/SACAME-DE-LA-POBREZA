@@ -32,9 +32,9 @@ Plan derivado de `Readme.md`. Cada fase se marca como completa solo cuando funci
 - [x] Menú + carrito + envío de pedido
 
 ## Fase 3 — Flujo del mesero
-- [ ] Comanda principal (estación fija, táctil): lista de pedidos entrantes en tiempo real
-- [ ] Confirmar / cancelar pedido
-- [ ] Envío del pedido confirmado a cocina
+- [x] Comanda principal (estación fija, táctil): lista de pedidos entrantes en tiempo real
+- [x] Confirmar / cancelar pedido
+- [x] Envío del pedido confirmado a cocina
 
 ## Fase 4 — Flujo de cocina
 - [ ] Pantalla de comanda de cocina, orden FIFO por hora de llegada
