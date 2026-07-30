@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
 const form = reactive({ nombre: '', email: '', password: '' })
 const cargando = ref(false)
+const error = ref('')
 const auth = useAuthStore()
 const router = useRouter()
 
 async function enviar() {
+  error.value = ''
   if (!form.nombre || !form.email || !form.password) {
-    ElMessage.warning('Completá todos los campos')
+    error.value = 'Completá todos los campos.'
+    return
+  }
+  if (form.password.length < 8) {
+    error.value = 'La contraseña necesita al menos 8 caracteres.'
     return
   }
   cargando.value = true
@@ -20,7 +25,8 @@ async function enviar() {
     router.push('/cliente')
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status
-    ElMessage.error(status === 409 ? 'Ese email ya está registrado' : 'No se pudo crear la cuenta')
+    error.value =
+      status === 409 ? 'Ese email ya está registrado.' : 'No se pudo crear la cuenta.'
   } finally {
     cargando.value = false
   }
@@ -28,63 +34,186 @@ async function enviar() {
 </script>
 
 <template>
-  <div class="registro-page">
-    <el-card class="registro-card">
-      <h1>Crear cuenta</h1>
-      <p class="subtitulo">Sacame de la Pobreza</p>
-      <el-form :model="form" label-position="top" @submit.prevent="enviar">
-        <el-form-item label="Nombre">
-          <el-input v-model="form.nombre" autocomplete="name" />
-        </el-form-item>
-        <el-form-item label="Email">
-          <el-input v-model="form.email" type="email" autocomplete="username" />
-        </el-form-item>
-        <el-form-item label="Contraseña">
+  <div class="pagina">
+    <div class="tarjeta">
+      <div class="marca">
+        <span class="marca-icono">S</span>
+        <span class="marca-nombre">Sacame de la Pobreza</span>
+      </div>
+
+      <div class="encabezado">
+        <h1>Crear cuenta</h1>
+        <p class="subtitulo">Para reservar mesa con anticipación.</p>
+      </div>
+
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="alerta" />
+
+      <form class="formulario" @submit.prevent="enviar">
+        <label class="campo">
+          <span class="campo-label">Nombre</span>
+          <el-input v-model="form.nombre" size="large" autocomplete="name" placeholder="Tu nombre" />
+        </label>
+        <label class="campo">
+          <span class="campo-label">Email</span>
+          <el-input
+            v-model="form.email"
+            type="email"
+            size="large"
+            autocomplete="username"
+            placeholder="vos@ejemplo.com"
+          />
+        </label>
+        <label class="campo">
+          <span class="campo-label">Contraseña</span>
           <el-input
             v-model="form.password"
             type="password"
+            size="large"
             autocomplete="new-password"
             show-password
+            placeholder="Mínimo 8 caracteres"
           />
-        </el-form-item>
-        <el-button type="primary" native-type="submit" :loading="cargando" style="width: 100%">
+        </label>
+        <el-button
+          type="primary"
+          size="large"
+          native-type="submit"
+          :loading="cargando"
+          class="boton-crear"
+        >
           Crear cuenta
         </el-button>
-      </el-form>
+      </form>
+
       <p class="link-login">
         ¿Ya tenés cuenta? <router-link to="/login">Iniciar sesión</router-link>
       </p>
-    </el-card>
+
+      <div class="nota-invitado">
+        <span>¿Venís a comer?</span> No hace falta cuenta: escaneá el QR de tu mesa y pedís directo.
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.registro-page {
-  min-height: 100vh;
+.pagina {
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f2f3f5;
+  padding: var(--space-6);
+  background: var(--surface-sunken);
 }
 
-.registro-card {
-  width: 360px;
+.tarjeta {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-8);
 }
 
-h1 {
-  font-size: 1.25rem;
-  margin-bottom: 0.25rem;
+.marca {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+}
+
+.marca-icono {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: white;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.marca-nombre {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.encabezado {
+  margin-bottom: var(--space-6);
+}
+
+.encabezado h1 {
+  font-size: 1.5rem;
+  margin-bottom: var(--space-1);
 }
 
 .subtitulo {
-  color: #909399;
-  margin-bottom: 1.5rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.alerta {
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.campo-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.boton-crear {
+  width: 100%;
+  margin-top: var(--space-2);
+  font-weight: 600;
 }
 
 .link-login {
   text-align: center;
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  color: #606266;
+  margin-top: var(--space-5);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.link-login a {
+  color: var(--color-secondary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.link-login a:hover {
+  text-decoration: underline;
+}
+
+.nota-invitado {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.nota-invitado span {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 </style>

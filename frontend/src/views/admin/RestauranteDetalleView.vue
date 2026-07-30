@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Grid } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import {
   crearMesa,
@@ -15,6 +16,10 @@ import {
   type RestauranteConMenu,
   type RolPersonal,
 } from '../../api/restaurantes'
+import { useAuthStore } from '../../stores/auth'
+import AppSidebar from '../../components/AppSidebar.vue'
+
+const auth = useAuthStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -113,7 +118,8 @@ async function regenerar(mesa: Mesa) {
   const actualizada = await regenerarQr(mesa.id)
   const idx = mesas.value.findIndex((m) => m.id === mesa.id)
   mesas.value[idx] = actualizada
-  URL.revokeObjectURL(qrUrls[mesa.id])
+  const urlAnterior = qrUrls[mesa.id]
+  if (urlAnterior) URL.revokeObjectURL(urlAnterior)
   await cargarQr(actualizada)
   ElMessage.success('QR regenerado')
 }
@@ -128,6 +134,11 @@ function volver() {
   router.push('/admin')
 }
 
+function cerrarSesion() {
+  auth.logout()
+  router.push('/login')
+}
+
 onMounted(cargar)
 onUnmounted(() => {
   Object.values(qrUrls).forEach((u) => URL.revokeObjectURL(u))
@@ -135,19 +146,31 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page" v-loading="cargando">
-    <template v-if="restaurante">
-      <el-button text @click="volver">&larr; Restaurantes</el-button>
+  <div class="layout">
+    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+      <template #nav>
+        <button type="button" class="nav-item" @click="volver">
+          <el-icon :size="18"><Grid /></el-icon>
+          <span>Restaurantes</span>
+        </button>
+      </template>
+    </AppSidebar>
 
-      <header class="encabezado">
+    <main class="contenido-principal">
+    <div v-if="cargando" class="contenido">
+      <el-skeleton animated :rows="8" />
+    </div>
+
+    <div v-else-if="restaurante" class="contenido">
+      <div class="hero-restaurante">
         <div>
           <h1>{{ restaurante.nombre }}</h1>
-          <p class="subtitulo">{{ restaurante.descripcion }}</p>
+          <p v-if="restaurante.descripcion" class="descripcion">{{ restaurante.descripcion }}</p>
         </div>
-        <el-button type="primary" @click="abrirDialogo">Nueva mesa</el-button>
-      </header>
+        <el-button type="primary" size="large" @click="abrirDialogo">Nueva mesa</el-button>
+      </div>
 
-      <section>
+      <section class="seccion">
         <h2>Menú</h2>
         <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
         <ul v-else class="lista-menu">
@@ -158,39 +181,50 @@ onUnmounted(() => {
         </ul>
       </section>
 
-      <section>
+      <section class="seccion">
         <h2>Mesas y códigos QR</h2>
         <el-empty v-if="mesas.length === 0" description="Sin mesas todavía" />
         <div v-else class="grid-qr">
-          <el-card v-for="mesa in mesas" :key="mesa.id" class="tarjeta-qr">
-            <p class="numero-mesa">Mesa {{ mesa.numero }}</p>
+          <div v-for="mesa in mesas" :key="mesa.id" class="tarjeta-qr">
+            <div class="encabezado-tarjeta-qr">
+              <p class="numero-mesa">Mesa {{ mesa.numero }}</p>
+              <span class="badge-estado-mesa" :class="`badge-estado-mesa--${mesa.estado}`">
+                {{ mesa.estado === 'ocupada' ? 'Ocupada' : 'Libre' }}
+              </span>
+            </div>
             <p class="capacidad">{{ mesa.capacidad }} personas</p>
-            <img v-if="qrUrls[mesa.id]" :src="qrUrls[mesa.id]" :alt="`QR mesa ${mesa.numero}`" />
+            <div class="marco-qr">
+              <img v-if="qrUrls[mesa.id]" :src="qrUrls[mesa.id]" :alt="`QR mesa ${mesa.numero}`" />
+              <el-skeleton v-else animated :rows="1" style="width: 100%" />
+            </div>
             <div class="acciones-qr">
               <a v-if="qrUrls[mesa.id]" :href="qrUrls[mesa.id]" :download="`mesa-${mesa.numero}-qr.png`">
                 <el-button size="small">Descargar</el-button>
               </a>
               <el-button size="small" @click="regenerar(mesa)">Regenerar</el-button>
             </div>
-          </el-card>
+          </div>
         </div>
       </section>
 
-      <section>
+      <section class="seccion">
         <div class="encabezado-seccion">
           <h2>Personal</h2>
           <el-button size="small" @click="abrirDialogoPersonal">Nueva cuenta</el-button>
         </div>
         <el-empty v-if="personal.length === 0" description="Sin mesero ni cocina todavía" />
-        <el-table v-else :data="personal">
-          <el-table-column prop="nombre" label="Nombre" />
-          <el-table-column prop="email" label="Email" />
-          <el-table-column label="Rol">
-            <template #default="{ row }">{{ etiquetaRol[row.rol as RolPersonal] }}</template>
-          </el-table-column>
-        </el-table>
+        <ul v-else class="lista-personal">
+          <li v-for="p in personal" :key="p.id">
+            <div>
+              <p class="nombre-personal">{{ p.nombre }}</p>
+              <p class="email-personal">{{ p.email }}</p>
+            </div>
+            <span class="badge-rol">{{ etiquetaRol[p.rol] }}</span>
+          </li>
+        </ul>
       </section>
-    </template>
+    </div>
+    </main>
 
     <el-dialog v-model="dialogoAbierto" title="Nueva mesa" width="360px">
       <el-form :model="form" label-position="top">
@@ -237,32 +271,72 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.page {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem;
+.layout {
+  min-height: 100dvh;
 }
 
-.encabezado {
+.contenido-principal {
+  margin-left: var(--sidebar-width);
+  min-height: 100dvh;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.nav-item:hover {
+  background: var(--color-surface-container);
+}
+
+.contenido {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
+}
+
+.hero-restaurante {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin: 1rem 0 2rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-10);
 }
 
-.subtitulo {
-  color: #909399;
+.hero-restaurante h1 {
+  font-size: 1.75rem;
+  margin-bottom: var(--space-2);
 }
 
-section {
-  margin-bottom: 2.5rem;
+.descripcion {
+  color: var(--text-secondary);
+}
+
+.seccion {
+  margin-bottom: var(--space-10);
+}
+
+.seccion h2 {
+  margin-bottom: var(--space-4);
 }
 
 .encabezado-seccion {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 
 .encabezado-seccion h2 {
@@ -272,58 +346,144 @@ section {
 .lista-menu {
   list-style: none;
   padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 .lista-menu li {
   display: flex;
   justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #ebeef5;
+  padding: var(--space-4) var(--space-5);
+}
+
+.lista-menu li + li {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .precio {
-  color: #606266;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .grid-qr {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
 }
 
 .tarjeta-qr {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
   text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.encabezado-tarjeta-qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
 }
 
 .numero-mesa {
   font-weight: 600;
 }
 
+.badge-estado-mesa {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.badge-estado-mesa--libre {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.badge-estado-mesa--ocupada {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
 .capacidad {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 0.85rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-3);
+}
+
+.marco-qr {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .tarjeta-qr img {
   width: 100%;
   height: auto;
+  display: block;
 }
 
 .acciones-qr {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   justify-content: center;
-  margin-top: 0.75rem;
+}
+
+.lista-personal {
+  list-style: none;
+  padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.lista-personal li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+}
+
+.lista-personal li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.nombre-personal {
+  font-weight: 500;
+}
+
+.email-personal {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  margin-top: var(--space-1);
+}
+
+.badge-rol {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
 }
 
 @media print {
-  .encabezado,
+  .encabezado-pagina,
+  .hero-restaurante,
   .lista-menu,
-  section h2,
+  .lista-personal,
   .acciones-qr,
-  header,
-  .el-button {
+  section h2 {
     display: none;
   }
 }

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Grid, Plus } from '@element-plus/icons-vue'
 import {
   crearRestaurante,
   listarRestaurantes,
@@ -9,6 +10,7 @@ import {
   type Restaurante,
 } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
+import AppSidebar from '../../components/AppSidebar.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -80,32 +82,63 @@ onMounted(cargar)
 </script>
 
 <template>
-  <div class="page">
-    <header class="encabezado">
-      <div>
-        <h1>Restaurantes</h1>
-        <p class="subtitulo">{{ auth.usuario?.nombre }} · administrador general</p>
-      </div>
-      <div class="acciones">
-        <el-button type="primary" @click="abrirDialogo">Nuevo restaurante</el-button>
-        <el-button @click="cerrarSesion">Salir</el-button>
-      </div>
-    </header>
+  <div class="layout">
+    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+      <template #nav>
+        <span class="nav-item nav-item--activo">
+          <el-icon :size="18"><Grid /></el-icon>
+          <span>Restaurantes</span>
+        </span>
+      </template>
+      <template #accion-principal>
+        <button type="button" class="boton-primario-sidebar" @click="abrirDialogo">
+          <el-icon :size="16"><Plus /></el-icon>
+          <span>Nuevo restaurante</span>
+        </button>
+      </template>
+    </AppSidebar>
 
-    <el-table v-loading="cargando" :data="restaurantes" @row-click="(r) => irADetalle(r.id)">
-      <el-table-column prop="nombre" label="Nombre" />
-      <el-table-column prop="descripcion" label="Descripción" />
-      <el-table-column label="Creado">
-        <template #default="{ row }">{{ new Date(row.created_at).toLocaleDateString() }}</template>
-      </el-table-column>
-    </el-table>
+    <main class="contenido-principal">
+      <header class="encabezado">
+        <div>
+          <h1>Restaurantes</h1>
+          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
+        </div>
+      </header>
 
-    <el-empty v-if="!cargando && restaurantes.length === 0" description="Todavía no hay restaurantes" />
+      <div class="contenido">
+        <div v-if="cargando" class="grid-restaurantes">
+          <el-skeleton v-for="i in 3" :key="i" animated :rows="2" class="tarjeta-skeleton" />
+        </div>
+
+        <div v-else-if="restaurantes.length === 0" class="estado-vacio">
+          <p class="estado-vacio-titulo">Todavía no hay restaurantes</p>
+          <p class="estado-vacio-texto">
+            Creá el primero para empezar a dar de alta mesas y personal.
+          </p>
+          <el-button type="primary" @click="abrirDialogo">Nuevo restaurante</el-button>
+        </div>
+
+        <div v-else class="grid-restaurantes">
+          <button
+            v-for="r in restaurantes"
+            :key="r.id"
+            type="button"
+            class="tarjeta-restaurante"
+            @click="irADetalle(r.id)"
+          >
+            <h2>{{ r.nombre }}</h2>
+            <p v-if="r.descripcion" class="descripcion">{{ r.descripcion }}</p>
+            <p class="fecha">Creado el {{ new Date(r.created_at).toLocaleDateString('es-CO') }}</p>
+          </button>
+        </div>
+      </div>
+    </main>
 
     <el-dialog v-model="dialogoAbierto" title="Nuevo restaurante" width="520px">
       <el-form :model="form" label-position="top">
         <el-form-item label="Nombre">
-          <el-input v-model="form.nombre" />
+          <el-input v-model="form.nombre" size="large" />
         </el-form-item>
         <el-form-item label="Descripción">
           <el-input v-model="form.descripcion" type="textarea" :rows="2" />
@@ -132,44 +165,160 @@ onMounted(cargar)
 </template>
 
 <style scoped>
-.page {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem;
+.layout {
+  min-height: 100dvh;
+}
+
+.contenido-principal {
+  margin-left: var(--sidebar-width);
+  min-height: 100dvh;
 }
 
 .encabezado {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
+  padding: var(--gutter);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .subtitulo {
-  color: #909399;
-  font-size: 0.9rem;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
 }
 
-.acciones {
+.contenido {
+  max-width: 1200px;
+  padding: var(--gutter);
+}
+
+.nav-item {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  position: relative;
 }
 
-:deep(.el-table__row) {
+.nav-item--activo {
+  background: var(--color-surface-container-high);
+  color: var(--color-secondary);
+}
+
+.nav-item--activo::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  width: 4px;
+  height: 24px;
+  background: var(--color-secondary);
+  border-radius: 0 4px 4px 0;
+}
+
+.boton-primario-sidebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
+  margin-bottom: var(--space-2);
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.boton-primario-sidebar:hover {
+  opacity: 0.9;
+}
+
+.grid-restaurantes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--gutter);
+}
+
+.tarjeta-skeleton {
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+}
+
+.estado-vacio {
+  text-align: center;
+  padding: var(--space-16) var(--space-6);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-default);
+}
+
+.estado-vacio-titulo {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.estado-vacio-texto {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-5);
+}
+
+.tarjeta-restaurante {
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-restaurante:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-secondary);
+}
+
+.tarjeta-restaurante h2 {
+  font-size: 1.1rem;
+  margin-bottom: var(--space-2);
+}
+
+.descripcion {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-3);
+}
+
+.fecha {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
 }
 
 .menu-items {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
 }
 
 .menu-item-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
 }
 </style>

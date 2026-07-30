@@ -32,6 +32,7 @@ def _mesa_a_out(mesa: Mesa) -> MesaOut:
         restaurante_id=mesa.restaurante_id,
         numero=mesa.numero,
         capacidad=mesa.capacidad,
+        estado=mesa.estado,
         qr_generado_at=mesa.qr_generado_at,
         qr_url=_qr_url(mesa.restaurante_id, mesa.id, mesa.qr_token),
     )

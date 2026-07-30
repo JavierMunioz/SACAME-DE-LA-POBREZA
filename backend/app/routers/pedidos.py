@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import require_roles
-from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, Usuario
+from app.core.deps import get_current_user_opcional, require_roles
+from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, SesionMesa, Usuario
 from app.schemas.pedido import ItemPedidoOut, PedidoCreate, PedidoOut
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
@@ -17,6 +17,7 @@ def _pedido_a_out(pedido: Pedido) -> PedidoOut:
         mesa_id=pedido.mesa_id,
         mesa_numero=pedido.mesa.numero,
         cliente_id=pedido.cliente_id,
+        nombre_invitado=pedido.nombre_invitado,
         estado=pedido.estado,
         created_at=pedido.created_at,
         confirmado_at=pedido.confirmado_at,
@@ -50,13 +51,46 @@ def _get_pedido_del_restaurante_o_404(db: Session, pedido_id: int, restaurante_i
 def crear_pedido(
     datos: PedidoCreate,
     db: Session = Depends(get_db),
-    cliente: Usuario = Depends(require_roles(Rol.CLIENTE)),
+    usuario: Usuario | None = Depends(get_current_user_opcional),
 ):
+    # Sin cuenta también se puede pedir (ver Readme: mesa libre sin reserva
+    # se puede usar sin fricción). Si hay sesión, tiene que ser un cliente:
+    # mesero/cocina/admin no generan pedidos a través de este endpoint.
+    if usuario is not None and usuario.rol != Rol.CLIENTE:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta acción")
+
     mesa = db.get(Mesa, datos.mesa_id)
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
     if not datos.items:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
+
+    # Un invitado sin cuenta necesita haber reclamado la mesa antes de
+    # pedir (POST /mesas/{id}/ocupar o /unirse) — así sabemos su nombre y
+    # confirmamos que la mesa sigue siendo suya. Un cliente logueado puede
+    # pedir con o sin sesión (compatibilidad con el flujo directo previo).
+    sesion: SesionMesa | None = None
+    nombre_invitado: str | None = None
+    if datos.sesion_token is not None:
+        sesion = (
+            db.query(SesionMesa)
+            .filter(
+                SesionMesa.token == datos.sesion_token,
+                SesionMesa.mesa_id == mesa.id,
+                SesionMesa.cerrada_at.is_(None),
+            )
+            .first()
+        )
+        if sesion is None:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "La sesión de esta mesa venció o no existe"
+            )
+        nombre_invitado = sesion.nombre_invitado
+    elif usuario is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Necesitás abrir o unirte a la mesa antes de pedir (escaneá el QR)",
+        )
 
     menu_ids = [item.menu_item_id for item in datos.items]
     menu_items = (
@@ -72,7 +106,12 @@ def crear_pedido(
             f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
         )
 
-    pedido = Pedido(mesa_id=mesa.id, cliente_id=cliente.id)
+    pedido = Pedido(
+        mesa_id=mesa.id,
+        cliente_id=usuario.id if usuario else None,
+        sesion_mesa_id=sesion.id if sesion else None,
+        nombre_invitado=nombre_invitado,
+    )
     db.add(pedido)
     db.flush()
 
@@ -94,6 +133,11 @@ def crear_pedido(
     return _pedido_a_out(pedido)
 
 
+# Rango de estados que le pertenece ver a cocina: desde que el mesero
+# confirma hasta que el plato queda listo para servir.
+ESTADOS_COCINA = (EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO)
+
+
 @router.get("", response_model=list[PedidoOut])
 def listar_pedidos(
     estado: EstadoPedido | None = None,
@@ -101,12 +145,19 @@ def listar_pedidos(
     usuario: Usuario = Depends(require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
 ):
     query = db.query(Pedido).join(Mesa).filter(Mesa.restaurante_id == usuario.restaurante_id)
+
     if estado is not None:
         query = query.filter(Pedido.estado == estado)
+        orden = Pedido.confirmado_at if estado in ESTADOS_COCINA else Pedido.created_at
+    elif usuario.rol == Rol.COCINA:
+        # Cocina ve por defecto todo lo que sigue activo en su estación, no
+        # un único estado puntual. Orden FIFO por hora de llegada a cocina
+        # (confirmado_at), no por hora de creación del pedido.
+        query = query.filter(Pedido.estado.in_(ESTADOS_COCINA))
+        orden = Pedido.confirmado_at
+    else:
+        orden = Pedido.created_at
 
-    # Cocina necesita orden FIFO por hora de llegada a cocina (confirmado_at),
-    # no por hora de creación del pedido (ver Readme.md).
-    orden = Pedido.confirmado_at if estado == EstadoPedido.CONFIRMADO else Pedido.created_at
     pedidos = query.order_by(orden).all()
     return [_pedido_a_out(p) for p in pedidos]
 
@@ -122,6 +173,36 @@ def confirmar_pedido(
         raise HTTPException(status.HTTP_409_CONFLICT, "El pedido ya no está pendiente")
     pedido.estado = EstadoPedido.CONFIRMADO
     pedido.confirmado_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-preparando", response_model=PedidoOut)
+def marcar_preparando(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    cocina: Usuario = Depends(require_roles(Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, cocina.restaurante_id)
+    if pedido.estado != EstadoPedido.CONFIRMADO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está confirmado")
+    pedido.estado = EstadoPedido.PREPARANDO
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-listo", response_model=PedidoOut)
+def marcar_listo(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    cocina: Usuario = Depends(require_roles(Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, cocina.restaurante_id)
+    if pedido.estado != EstadoPedido.PREPARANDO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está en preparación")
+    pedido.estado = EstadoPedido.LISTO
     db.commit()
     db.refresh(pedido)
     return _pedido_a_out(pedido)

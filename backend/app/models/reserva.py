@@ -11,6 +11,9 @@ class EstadoReserva(str, enum.Enum):
     ACTIVA = "activa"
     CANCELADA = "cancelada"
     COMPLETADA = "completada"
+    # Nadie hizo check-in 15 min antes de la hora reservada: la mesa se
+    # libera sola para que otro pueda usarla o reservarla (ver Brain.md).
+    EXPIRADA = "expirada"
 
 
 class Reserva(Base):
@@ -40,6 +43,10 @@ class Reserva(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Se llena cuando el cliente confirma su llegada (ver /mesas/{id}/ocupar
+    # con reserva_id). Si no se llena 15 min antes de `inicio`, la reserva
+    # expira sola (ver MINUTOS_LLEGADA_ANTICIPADA en routers/mesas.py).
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     mesa: Mapped["Mesa"] = relationship(back_populates="reservas")
     cliente: Mapped["Usuario"] = relationship()

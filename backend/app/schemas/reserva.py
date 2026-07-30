@@ -21,6 +21,7 @@ class ReservaOut(BaseModel):
     duracion_minutos: int
     estado: EstadoReserva
     created_at: datetime
+    check_in_at: datetime | None
 
 
 class MesaDisponibilidad(BaseModel):
