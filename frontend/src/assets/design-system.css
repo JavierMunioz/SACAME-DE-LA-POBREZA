@@ -82,6 +82,22 @@
   --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
 
+  /* ---- Soft UI: relieve ligero de doble tono (realce claro arriba,
+     sombra tenue abajo), no neumorfismo pleno — se usa como acento
+     puntual sobre tarjetas, no como base de toda la superficie. ---- */
+  --shadow-soft-sm:
+    -2px -2px 6px rgba(255, 255, 255, 0.7),
+    3px 3px 8px rgba(24, 24, 27, 0.06);
+  --shadow-soft-md:
+    -3px -3px 10px rgba(255, 255, 255, 0.75),
+    6px 6px 16px rgba(24, 24, 27, 0.08);
+  --highlight-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  /* ---- Glassmorphism: solo para login/modales, no para toda la app ---- */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-blur: blur(20px) saturate(160%);
+
   /* ---- Movimiento ---- */
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
@@ -165,6 +181,43 @@ h3 {
   color: var(--text-tertiary);
 }
 
+/* Soft UI: relieve ligero, no plano. Usar en tarjetas de métrica/
+   destacadas, no en toda tarjeta de la app (eso sería neumorfismo
+   pleno, que el usuario no pidió — solo "toques sutiles"). */
+.card-soft {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft-sm), var(--highlight-inset);
+}
+
+/* Glassmorphism — reservado a login/registro y a modales (el-dialog),
+   no a toda la app. Blur real vía backdrop-filter, con fallback sólido
+   si el navegador no soporta transparencia reducida. */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    var(--shadow-lg);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-panel {
+    background: var(--surface-raised);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ---- Tactile feedback ---- */
 button,
 .el-button {
@@ -229,12 +282,35 @@ button:active,
 
 .el-card {
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft-sm);
   border-color: var(--border-subtle);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
+.el-card:hover {
+  box-shadow: var(--shadow-soft-md);
+}
+
+/* Modal: único lugar además del login donde va vidrio esmerilado real. */
 .el-dialog {
   border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .el-dialog {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+.el-overlay {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .el-input__wrapper,

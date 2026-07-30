@@ -186,7 +186,7 @@ onUnmounted(() => {
       </div>
 
       <div v-if="estadisticas" class="grid-dashboard">
-        <div class="tarjeta-metrica">
+        <div class="tarjeta-metrica celda-capacidad">
           <span class="label-mono">Capacidad actual</span>
           <div class="metrica-capacidad">
             <span class="metrica-numero">
@@ -203,7 +203,7 @@ onUnmounted(() => {
           <span class="metrica-detalle font-mono">{{ estadisticas.mesas_ocupadas }} / {{ estadisticas.mesas_total }} mesas</span>
         </div>
 
-        <div class="tarjeta-metrica">
+        <div class="tarjeta-metrica celda-revenue">
           <span class="label-mono">Ingresos de hoy</span>
           <span class="metrica-numero metrica-revenue font-mono">{{ formatoMoneda(estadisticas.revenue_hoy) }}</span>
           <span
@@ -216,7 +216,7 @@ onUnmounted(() => {
           <span v-else class="metrica-detalle">Sin datos de ayer para comparar</span>
         </div>
 
-        <div class="tarjeta-metrica tarjeta-hot-items">
+        <div class="tarjeta-metrica tarjeta-hot-items celda-hot-items">
           <div class="encabezado-seccion">
             <span class="label-mono">Más vendidos hoy</span>
           </div>
@@ -483,16 +483,43 @@ onUnmounted(() => {
 }
 
 /* ---- Dashboard: capacidad / revenue / hot items ---- */
+/* Bento real: 3 métricas → 3 celdas (1 grande + 2 apiladas), no tres
+   tarjetas idénticas en fila. La celda con más contenido (la lista de
+   platos) se lleva el espacio grande. */
 .grid-dashboard {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1.3fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: var(--space-5);
   margin-bottom: var(--space-10);
+}
+
+.celda-hot-items {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+
+.celda-capacidad {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.celda-revenue {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 @media (max-width: 860px) {
   .grid-dashboard {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .celda-hot-items,
+  .celda-capacidad,
+  .celda-revenue {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 
@@ -501,10 +528,20 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-5);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft-sm), var(--highlight-inset);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-metrica:hover {
+  box-shadow: var(--shadow-soft-md), var(--highlight-inset);
+}
+
+/* Única celda con variación de fondo del bento (evita "todo blanco"). */
+.tarjeta-hot-items {
+  background: linear-gradient(165deg, var(--color-secondary-soft) 0%, var(--surface-raised) 55%);
 }
 
 .metrica-capacidad {
