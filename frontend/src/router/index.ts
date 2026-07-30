@@ -14,9 +14,26 @@ const router = createRouter({
       component: () => import('../views/LoginView.vue'),
     },
     {
+      path: '/registro',
+      name: 'registro',
+      component: () => import('../views/RegistroView.vue'),
+    },
+    {
+      path: '/mesa/:restauranteId/:mesaId',
+      name: 'mesa-qr',
+      component: () => import('../views/MesaView.vue'),
+      meta: { requiereAuth: true },
+    },
+    {
       path: '/cliente',
       name: 'cliente',
       component: () => import('../views/cliente/HomeView.vue'),
+      meta: { rol: 'cliente' as Rol },
+    },
+    {
+      path: '/cliente/restaurantes/:id',
+      name: 'cliente-restaurante',
+      component: () => import('../views/cliente/RestauranteView.vue'),
       meta: { rol: 'cliente' as Rol },
     },
     {
@@ -48,7 +65,8 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const rolRequerido = to.meta.rol as Rol | undefined
-  if (!rolRequerido) return true
+  const requiereAuth = to.meta.requiereAuth as boolean | undefined
+  if (!rolRequerido && !requiereAuth) return true
 
   const auth = useAuthStore()
   if (!auth.token) {
@@ -62,7 +80,7 @@ router.beforeEach(async (to) => {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
   }
-  if (auth.usuario?.rol !== rolRequerido) {
+  if (rolRequerido && auth.usuario?.rol !== rolRequerido) {
     return false
   }
   return true
