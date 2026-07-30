@@ -4,6 +4,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.models import EstadoMesa, EstadoPedido, Factura, Mesa, Pedido, Rol, SesionMesa, Usuario
@@ -32,7 +33,7 @@ def _factura_a_out(factura: Factura, items: list[ItemPedidoOut]) -> FacturaOut:
     response_model=FacturaOut,
     status_code=status.HTTP_201_CREATED,
 )
-def generar_factura(
+async def generar_factura(
     mesa_id: int,
     datos: FacturaCreate,
     db: Session = Depends(get_db),
@@ -101,6 +102,7 @@ def generar_factura(
     mesa.estado = EstadoMesa.LIBRE
 
     db.commit()
+    await gestor_carritos.limpiar(mesa_id)
     db.refresh(factura)
 
     items_out = [

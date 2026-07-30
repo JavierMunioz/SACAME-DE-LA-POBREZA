@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
 from app.core.deps import get_current_user_opcional, require_roles
 from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, SesionMesa, Usuario
@@ -48,7 +49,7 @@ def _get_pedido_del_restaurante_o_404(db: Session, pedido_id: int, restaurante_i
 
 
 @router.post("", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
-def crear_pedido(
+async def crear_pedido(
     datos: PedidoCreate,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_current_user_opcional),
@@ -65,8 +66,11 @@ def crear_pedido(
     if not datos.items:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
 
+    # Solo quien abrió la mesa puede enviar el pedido — a los que se
+    # sumaron con el código les llega el mismo carrito en vivo por
+    # WebSocket, pero no tienen `token_dueno` para confirmar el envío.
     # Un invitado sin cuenta necesita haber reclamado la mesa antes de
-    # pedir (POST /mesas/{id}/ocupar o /unirse) — así sabemos su nombre y
+    # pedir (POST /mesas/{id}/ocupar) — así sabemos su nombre y
     # confirmamos que la mesa sigue siendo suya. Un cliente logueado puede
     # pedir con o sin sesión (compatibilidad con el flujo directo previo).
     sesion: SesionMesa | None = None
@@ -75,7 +79,7 @@ def crear_pedido(
         sesion = (
             db.query(SesionMesa)
             .filter(
-                SesionMesa.token == datos.sesion_token,
+                SesionMesa.token_dueno == datos.sesion_token,
                 SesionMesa.mesa_id == mesa.id,
                 SesionMesa.cerrada_at.is_(None),
             )
@@ -83,7 +87,8 @@ def crear_pedido(
         )
         if sesion is None:
             raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED, "La sesión de esta mesa venció o no existe"
+                status.HTTP_401_UNAUTHORIZED,
+                "Solo quien abrió la mesa puede enviar el pedido, o la sesión venció",
             )
         nombre_invitado = sesion.nombre_invitado
     elif usuario is None:
@@ -130,6 +135,10 @@ def crear_pedido(
 
     db.commit()
     db.refresh(pedido)
+    if sesion is not None:
+        # El pedido ya quedó en la base — el carrito en vivo se vacía
+        # para todos los que estaban viendo esta mesa.
+        await gestor_carritos.limpiar(mesa.id)
     return _pedido_a_out(pedido)
 
 

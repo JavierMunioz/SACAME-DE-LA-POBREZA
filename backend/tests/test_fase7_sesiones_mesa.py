@@ -50,7 +50,28 @@ def test_unirse_con_codigo_incorrecto_falla(client, restaurante_con_mesa):
     assert r.status_code == 401
 
 
-def test_sesion_compartida_permite_pedir_a_ambos(client, restaurante_con_mesa):
+def test_sesion_compartida_ve_mismo_token_pero_solo_dueno_tiene_token_dueno(
+    client, restaurante_con_mesa
+):
+    mesa = restaurante_con_mesa["mesa"]
+
+    r1 = client.post(
+        f"/mesas/{mesa.id}/ocupar",
+        json={"qr_token": mesa.qr_token, "nombre_invitado": "Ana"},
+    )
+    assert r1.json()["token_dueno"] is not None
+    token = r1.json()["token"]
+    codigo = r1.json()["codigo_acceso"]
+
+    r2 = client.post(
+        f"/mesas/{mesa.id}/unirse",
+        json={"qr_token": mesa.qr_token, "codigo_acceso": codigo},
+    )
+    assert r2.json()["token"] == token
+    assert r2.json()["token_dueno"] is None
+
+
+def test_solo_el_dueno_puede_enviar_el_pedido(client, restaurante_con_mesa):
     mesa = restaurante_con_mesa["mesa"]
     item_id = restaurante_con_mesa["menu_item"].id
 
@@ -58,24 +79,32 @@ def test_sesion_compartida_permite_pedir_a_ambos(client, restaurante_con_mesa):
         f"/mesas/{mesa.id}/ocupar",
         json={"qr_token": mesa.qr_token, "nombre_invitado": "Ana"},
     )
-    token = r1.json()["token"]
-    codigo = r1.json()["codigo_acceso"]
-    r2 = client.post(
-        f"/mesas/{mesa.id}/unirse",
-        json={"qr_token": mesa.qr_token, "codigo_acceso": codigo},
-    )
-    assert r2.json()["token"] == token
+    token_compartido = r1.json()["token"]
+    token_dueno = r1.json()["token_dueno"]
 
-    pedido = client.post(
+    # Un dispositivo que solo tiene el token compartido (ej. se unió con
+    # el código) no puede enviar el pedido.
+    rechazado = client.post(
         "/pedidos",
         json={
             "mesa_id": mesa.id,
-            "sesion_token": token,
+            "sesion_token": token_compartido,
             "items": [{"menu_item_id": item_id, "cantidad": 1}],
         },
     )
-    assert pedido.status_code == 201
-    assert pedido.json()["nombre_invitado"] == "Ana"
+    assert rechazado.status_code == 401
+
+    # El dueño, con su token_dueno, sí puede.
+    aceptado = client.post(
+        "/pedidos",
+        json={
+            "mesa_id": mesa.id,
+            "sesion_token": token_dueno,
+            "items": [{"menu_item_id": item_id, "cantidad": 1}],
+        },
+    )
+    assert aceptado.status_code == 201
+    assert aceptado.json()["nombre_invitado"] == "Ana"
 
 
 def test_reserva_con_check_in_ocupa_la_mesa(client, restaurante_con_mesa, cliente_autenticado):
@@ -148,7 +177,7 @@ def test_factura_libera_la_mesa_y_cierra_la_sesion(
         f"/mesas/{mesa.id}/ocupar",
         json={"qr_token": mesa.qr_token, "nombre_invitado": "Ana"},
     )
-    sesion_token = ocupar.json()["token"]
+    sesion_token = ocupar.json()["token_dueno"]
 
     pedido = client.post(
         "/pedidos",

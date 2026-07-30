@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { canjearQr, ocuparMesa, unirseAMesa, type MesaQrInfo, type SesionMesa } from '../api/mesas'
+import {
+  canjearQr,
+  ocuparMesa,
+  unirseAMesa,
+  urlWsCarrito,
+  type MesaQrInfo,
+  type SesionMesa,
+} from '../api/mesas'
 import { crearPedido } from '../api/pedidos'
 import { useAuthStore } from '../stores/auth'
 
@@ -21,9 +28,15 @@ const nombreInput = ref('')
 const codigoInput = ref('')
 const errorReclamo = ref('')
 
-// carrito: menu_item_id -> cantidad
+// carrito: espejo local del carrito compartido — lo actualiza el
+// WebSocket, no se muta a mano (así todos los dispositivos de la mesa
+// ven siempre los mismos números).
 const carrito = reactive<Record<number, number>>({})
 const observaciones = reactive<Record<number, string>>({})
+
+const esDueno = computed(() => !!sesion.value?.token_dueno)
+
+let ws: WebSocket | null = null
 
 function claveSesion(mesaId: number) {
   return `sesion-mesa-${mesaId}`
@@ -45,6 +58,37 @@ function guardarSesion(s: SesionMesa) {
 
 function borrarSesion(mesaId: number) {
   localStorage.removeItem(claveSesion(mesaId))
+}
+
+function conectarCarritoEnVivo(mesaId: number, token: string) {
+  desconectarCarritoEnVivo()
+  ws = new WebSocket(urlWsCarrito(mesaId, token))
+  ws.onmessage = (evento) => {
+    const datos = JSON.parse(evento.data)
+    if (datos.tipo !== 'carrito') return
+    Object.keys(carrito).forEach((k) => delete carrito[Number(k)])
+    for (const item of datos.items as { menu_item_id: number; cantidad: number; observaciones: string | null }[]) {
+      carrito[item.menu_item_id] = item.cantidad
+      if (item.observaciones) observaciones[item.menu_item_id] = item.observaciones
+    }
+  }
+}
+
+function desconectarCarritoEnVivo() {
+  ws?.close()
+  ws = null
+}
+
+function enviarCambioItem(menuItemId: number, cantidad: number) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return
+  ws.send(
+    JSON.stringify({
+      accion: 'set_item',
+      menu_item_id: menuItemId,
+      cantidad,
+      observaciones: observaciones[menuItemId] || null,
+    }),
+  )
 }
 
 async function cargar() {
@@ -69,6 +113,7 @@ async function cargar() {
     // es de una visita anterior ya cerrada — no sirve, se descarta.
     sesion.value = info.value.requiere_codigo || guardada ? guardada : null
     if (!info.value.requiere_codigo && guardada) borrarSesion(info.value.mesa_id)
+    if (sesion.value) conectarCarritoEnVivo(info.value.mesa_id, sesion.value.token)
   } catch {
     errorToken.value = true
   } finally {
@@ -121,6 +166,7 @@ async function reclamar(accion: () => Promise<SesionMesa>) {
     const s = await accion()
     sesion.value = s
     guardarSesion(s)
+    if (info.value) conectarCarritoEnVivo(info.value.mesa_id, s.token)
   } catch {
     errorReclamo.value = 'No se pudo completar la acción. Puede que alguien se te haya adelantado — recargá la página.'
   } finally {
@@ -129,13 +175,12 @@ async function reclamar(accion: () => Promise<SesionMesa>) {
 }
 
 function sumar(menuItemId: number) {
-  carrito[menuItemId] = (carrito[menuItemId] ?? 0) + 1
+  enviarCambioItem(menuItemId, (carrito[menuItemId] ?? 0) + 1)
 }
 
 function restar(menuItemId: number) {
   if (!carrito[menuItemId]) return
-  carrito[menuItemId] -= 1
-  if (carrito[menuItemId] <= 0) delete carrito[menuItemId]
+  enviarCambioItem(menuItemId, carrito[menuItemId] - 1)
 }
 
 const totalItems = computed(() => Object.values(carrito).reduce((a, b) => a + b, 0))
@@ -149,7 +194,7 @@ const totalPrecio = computed(() => {
 })
 
 async function enviarPedido() {
-  if (!info.value || !sesion.value) return
+  if (!info.value || !sesion.value?.token_dueno) return
   enviandoPedido.value = true
   try {
     const items = Object.entries(carrito).map(([menuItemId, cantidad]) => ({
@@ -157,7 +202,7 @@ async function enviarPedido() {
       cantidad,
       observaciones: observaciones[Number(menuItemId)] || undefined,
     }))
-    await crearPedido(info.value.mesa_id, items, sesion.value.token)
+    await crearPedido(info.value.mesa_id, items, sesion.value.token_dueno)
     ElMessage.success('Pedido enviado a la cocina')
     Object.keys(carrito).forEach((k) => delete carrito[Number(k)])
     router.push('/cliente')
@@ -166,6 +211,7 @@ async function enviarPedido() {
     if (status === 401 && info.value) {
       borrarSesion(info.value.mesa_id)
       sesion.value = null
+      desconectarCarritoEnVivo()
       ElMessage.error('Tu sesión de mesa venció. Volvé a abrir o unirte a la mesa.')
     } else {
       ElMessage.error('No se pudo enviar el pedido')
@@ -176,6 +222,7 @@ async function enviarPedido() {
 }
 
 onMounted(cargar)
+onUnmounted(desconectarCarritoEnVivo)
 </script>
 
 <template>
@@ -204,6 +251,9 @@ onMounted(cargar)
             <span>Pidiendo como <strong>{{ sesion.nombre }}</strong></span>
             <span class="chip-codigo">Código de tu mesa: <strong>{{ sesion.codigo_acceso }}</strong></span>
           </div>
+          <p v-if="!esDueno" class="aviso-no-dueno">
+            Podés sumar platos al carrito, pero solo quien abrió la mesa puede enviar el pedido.
+          </p>
 
           <section class="menu">
             <h2>Menú</h2>
@@ -297,6 +347,7 @@ onMounted(cargar)
           <span class="barra-carrito-total">${{ totalPrecio.toLocaleString('es-CO') }}</span>
         </div>
         <el-button
+          v-if="esDueno"
           type="primary"
           size="large"
           :loading="enviandoPedido"
@@ -305,6 +356,7 @@ onMounted(cargar)
         >
           Enviar pedido
         </el-button>
+        <span v-else class="texto-solo-dueno">Solo quien abrió la mesa puede enviar</span>
       </div>
     </template>
   </div>
@@ -398,7 +450,7 @@ onMounted(cargar)
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   font-weight: 500;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-2);
 }
 
 .banner-exito {
@@ -425,6 +477,12 @@ onMounted(cargar)
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
   font-variant-numeric: tabular-nums;
+}
+
+.aviso-no-dueno {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-6);
 }
 
 .menu {
@@ -545,5 +603,11 @@ onMounted(cargar)
 .boton-enviar {
   font-weight: 600;
   padding-inline: var(--space-8);
+}
+
+.texto-solo-dueno {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  font-style: italic;
 }
 </style>

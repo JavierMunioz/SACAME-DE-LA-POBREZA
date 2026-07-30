@@ -16,7 +16,7 @@ def test_invitado_puede_crear_pedido_sin_login(client, restaurante_con_mesa):
         json={"qr_token": restaurante_con_mesa["mesa"].qr_token, "nombre_invitado": "Juan"},
     )
     assert ocupar.status_code == 201
-    sesion_token = ocupar.json()["token"]
+    sesion_token = ocupar.json()["token_dueno"]
 
     r = client.post(
         "/pedidos",
