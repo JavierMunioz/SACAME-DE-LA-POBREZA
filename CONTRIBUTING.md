@@ -48,17 +48,26 @@ Reglas:
 ## Entorno local
 
 ```bash
+# Base de datos
+docker compose up -d          # Postgres en localhost:5434 (ver Brain.md sobre el puerto)
+
 # Backend
 cd backend
 python -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
+pip install -r requirements-dev.txt   # incluye requirements.txt + pytest/httpx
+cp ../.env.example .env               # completar valores si aplica
+alembic upgrade head
+uvicorn app.main:app --reload --port 8001
+
+# Bootstrap del primer admin_general (solo la primera vez)
+python scripts/crear_admin_general.py admin@tu-dominio.com "Nombre Apellido"
 
 # Frontend
 cd frontend
 npm install
-npm run dev
+npm run dev   # sirve en localhost:5173, apunta a localhost:8001 por default
 ```
 
-(Ajustar cuando se defina la estructura final de carpetas.)
+Puertos fijados en 5434 (Postgres) y 8001 (API) porque 5432/5433/8000 ya están
+ocupados por otros proyectos en la máquina de desarrollo — ver Brain.md.
