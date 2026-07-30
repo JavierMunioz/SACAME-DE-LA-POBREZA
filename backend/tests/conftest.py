@@ -68,6 +68,9 @@ def restaurante_con_mesa():
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
     db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).delete()
     db.query(Mesa).filter(Mesa.restaurante_id == restaurante.id).delete()
+    # Personal (mesero/cocina/admin_restaurante) creado para este restaurante
+    # de test, ej. por el fixture mesero_autenticado.
+    db.query(Usuario).filter(Usuario.restaurante_id == restaurante.id).delete()
     db.query(Restaurante).filter(Restaurante.id == restaurante.id).delete()
     db.commit()
     db.close()
@@ -89,6 +92,27 @@ def cliente_autenticado(client):
     db.close()
 
     return {"token": token, "usuario_id": usuario_id, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+@pytest.fixture
+def mesero_autenticado(client, restaurante_con_mesa):
+    email = "mesero-fixture@sacame-tests.dev"
+    db = SessionLocal()
+    db.add(
+        Usuario(
+            nombre="Mesero fixture",
+            email=email,
+            password_hash=hash_password("clave12345"),
+            rol=Rol.MESERO,
+            restaurante_id=restaurante_con_mesa["restaurante"].id,
+        )
+    )
+    db.commit()
+    db.close()
+
+    login = client.post("/auth/login", data={"username": email, "password": "clave12345"})
+    token = login.json()["access_token"]
+    return {"token": token, "headers": {"Authorization": f"Bearer {token}"}}
 
 
 @pytest.fixture
