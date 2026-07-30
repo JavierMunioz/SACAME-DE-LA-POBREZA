@@ -6,7 +6,7 @@ import { Tickets } from '@element-plus/icons-vue'
 import { cancelarPedido, confirmarPedido, listarPedidos, type Pedido } from '../../api/pedidos'
 import { generarFactura, type Factura } from '../../api/facturas'
 import { useAuthStore } from '../../stores/auth'
-import AppSidebar from '../../components/AppSidebar.vue'
+import AppTopNav from '../../components/AppTopNav.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
 // por polling cada 5s, simple y suficiente para el volumen de un MVP.
@@ -126,23 +126,21 @@ onUnmounted(() => clearInterval(intervalo))
 </script>
 
 <template>
-  <div class="layout">
-    <AppSidebar subtitulo="Comanda" @salir="cerrarSesion">
+  <div class="pagina">
+    <AppTopNav subtitulo="Comanda" @salir="cerrarSesion">
       <template #nav>
         <span class="nav-item nav-item--activo">
-          <el-icon :size="18"><Tickets /></el-icon>
+          <el-icon :size="16"><Tickets /></el-icon>
           <span>Pedidos</span>
         </span>
       </template>
-    </AppSidebar>
+    </AppTopNav>
 
     <main class="contenido-principal">
-      <header class="encabezado">
-        <div>
-          <h1>Comanda</h1>
-          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
-        </div>
-      </header>
+      <div class="titulo-seccion">
+        <h1>Comanda</h1>
+        <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
+      </div>
 
       <div class="contenido">
         <div v-if="mesasParaCerrar.length > 0" class="franja-cerrar">
@@ -266,60 +264,33 @@ onUnmounted(() => clearInterval(intervalo))
 </template>
 
 <style scoped>
-.layout {
+.pagina {
   min-height: 100dvh;
+  background: var(--surface-sunken);
 }
 
 .contenido-principal {
-  margin-left: var(--sidebar-width);
-  min-height: 100dvh;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
 }
 
-.encabezado {
-  padding: var(--gutter);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+.titulo-seccion {
+  margin-bottom: var(--space-6);
+}
+
+.titulo-seccion h1 {
+  font-size: 1.75rem;
+  margin-bottom: var(--space-1);
 }
 
 .subtitulo {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .contenido {
-  max-width: 1200px;
-  padding: var(--gutter);
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  position: relative;
-}
-
-.nav-item--activo {
-  background: var(--surface-muted);
-  color: var(--color-secondary);
-}
-
-.nav-item--activo::before {
-  content: '';
-  position: absolute;
-  left: -16px;
-  width: 4px;
-  height: 24px;
-  background: var(--color-secondary);
-  border-radius: 0 4px 4px 0;
+  width: 100%;
 }
 
 .franja-cerrar {
@@ -423,11 +394,12 @@ onUnmounted(() => clearInterval(intervalo))
 
 .mesa {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1.1rem;
 }
 
 .badge-estado {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
@@ -474,15 +446,22 @@ onUnmounted(() => clearInterval(intervalo))
   list-style: none;
   padding: 0;
   margin: 0 0 var(--space-4);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .items-pedido li {
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.items-pedido li:last-child {
+  border-bottom: none;
 }
 
 .cantidad-item {
-  font-weight: 600;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-secondary);
 }
 
 .observaciones {

@@ -19,7 +19,7 @@ import {
   type RolPersonal,
 } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
-import AppSidebar from '../../components/AppSidebar.vue'
+import AppTopNav from '../../components/AppTopNav.vue'
 
 const auth = useAuthStore()
 
@@ -161,15 +161,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="layout">
-    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+  <div class="pagina">
+    <AppTopNav subtitulo="Admin General" @salir="cerrarSesion">
       <template #nav>
         <button type="button" class="nav-item" @click="volver">
-          <el-icon :size="18"><Grid /></el-icon>
+          <el-icon :size="16"><Grid /></el-icon>
           <span>Restaurantes</span>
         </button>
       </template>
-    </AppSidebar>
+    </AppTopNav>
 
     <main class="contenido-principal">
     <div v-if="cargando" class="contenido">
@@ -336,34 +336,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.layout {
+.pagina {
   min-height: 100dvh;
+  background: var(--surface-sunken);
 }
 
 .contenido-principal {
-  margin-left: var(--sidebar-width);
   min-height: 100dvh;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  background: none;
-  border: none;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-standard);
-}
-
-.nav-item:hover {
-  background: var(--surface-muted);
 }
 
 .contenido {

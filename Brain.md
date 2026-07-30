@@ -56,6 +56,16 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] El usuario aprobó el estilo — se propaga a toda la app, sidebar reemplazado por nav bar
+Primera vez en esta serie de rediseños que el usuario dice explícitamente que le gusta el resultado (listado/detalle de restaurante). Pidió aplicarlo a "todo el software por todos lados", con una salvedad explícita: en comanda (mesero) y cocina prioridad a que se vea "profesional y legible" — no forzar el mismo lenguaje decorativo (glass, tarjetas con foto) donde reduciría claridad operativa.
+
+- **`AppSidebar.vue` → `AppTopNav.vue`**: la barra lateral fija de 264px se reemplaza por una barra superior sticky con `glass-panel` (mismo patrón que el header de `cliente/HomeView.vue`), usada ahora en admin (`RestaurantesView`, `RestauranteDetalleView`) y mesero. Libera ancho horizontal completo para las tarjetas y el dashboard bento, en vez de competir con una franja de 264px fija. `AppSidebar.vue` quedó sin ningún import — se borró (dead code).
+- **`.nav-item` / `.nav-item--activo`** se promovieron a utilidad global en `design-system.css` (antes duplicadas con estilos ligeramente distintos en 3 archivos) — mismo lenguaje de navegación en toda la app, un solo lugar para mantenerlo.
+- **Cocina y comanda mantienen su propio criterio de legibilidad**: cocina sigue sin nav (pantalla completa, alto contraste, texto grande — ya lo tenía bien desde una pasada anterior, no se tocó). Comanda ganó nav bar pero las tarjetas de pedido NO llevan `glass` — se les subió tamaño de fuente (ítems de 0.9rem→1rem, número de mesa a 1.1rem/700), separador entre ítems, y la cantidad de cada ítem pasó a mono-bold en indigo para que se lea de un vistazo. Vidrio esmerilado reduce contraste; en una pantalla operativa que se lee rápido bajo presión, eso pesa más que la consistencia decorativa.
+- **Gotcha encontrado en la limpieza**: `mesero/HomeView.vue` todavía tenía `background: var(--surface)` (variable que ya no existe desde la reescritura completa del design system, dos pasadas atrás) en el header — no se había detectado antes porque el grep de esa pasada buscaba `color-surface-container` específicamente, no `var(--surface)` a secas. Se agregó un grep de barrido final (`var(--surface)[^-]`) sobre todo `frontend/src` antes de cerrar la tarea, cero coincidencias.
+- `--sidebar-width` también se eliminó del design system (sin uso tras el cambio).
+- Build + typecheck limpios, backend sin tocar (56/56). Probado en vivo las 4 personas: admin y mesero con nav bar horizontal en vez de sidebar, cocina intacta (sin nav, alto contraste), cliente sin cambios (ya tenía el estilo aprobado).
+
 ### [2026-07-30] Cuarta pasada: bento asimétrico no era lo que pedía el mockup — grilla uniforme de 4
 El mockup real (imagen pegada en el chat, no el bento inventado de la pasada anterior) muestra una grilla uniforme de 4 columnas, todas las tarjetas del mismo tamaño, con nav bar (Inicio/¿Cómo funciona?), chips de categoría, badge "Mesas disponibles" y corazón de favorito sobre la imagen. Se había armado un layout bento (1 destacada + resto chicas) que no correspondía a lo pedido — corregido a grilla uniforme real.
 

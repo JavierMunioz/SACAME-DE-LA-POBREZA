@@ -82,8 +82,6 @@
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
   --duration-base: 180ms;
-
-  --sidebar-width: 264px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -157,6 +155,35 @@ h3 { font-size: 1.125rem; line-height: 1.625rem; }
     grid-column: span 1;
     grid-row: span 1;
   }
+}
+
+/* Nav-item: pill horizontal reusado en AppTopNav (admin/mesero) y en el
+   nav del cliente — mismo lenguaje de navegación en toda la app. */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.nav-item:hover {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.nav-item--activo,
+.nav-item--activo:hover {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
 }
 
 /* ---- Soft UI: acento puntual, no la base de toda tarjeta ---- */
