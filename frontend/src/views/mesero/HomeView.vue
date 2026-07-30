@@ -176,12 +176,17 @@ function abrirDialogoOcupar(mesa: Mesa) {
 
 async function confirmarOcupar() {
   if (!mesaAOcupar.value) return
+  const numero = mesaAOcupar.value.numero
   procesandoMesa.value = mesaAOcupar.value.id
   try {
-    await ocuparMesaStaff(mesaAOcupar.value.id, nombreOcupar.value || undefined)
-    ElMessage.success(`Mesa ${mesaAOcupar.value.numero} ocupada`)
+    const sesion = await ocuparMesaStaff(mesaAOcupar.value.id, nombreOcupar.value || undefined)
     dialogoOcuparAbierto.value = false
     await cargarMesas()
+    await ElMessageBox.alert(
+      `Código de acceso: <strong style="font-size:1.5rem;letter-spacing:0.1em">${sesion.codigo_acceso}</strong><br>Si el cliente quiere pedir después desde su celular, escanea el QR de la mesa y usa este código para sumarse.`,
+      `Mesa ${numero} ocupada`,
+      { dangerouslyUseHTMLString: true, confirmButtonText: 'Listo' },
+    )
   } catch {
     ElMessage.error('No se pudo ocupar la mesa')
   } finally {
@@ -219,18 +224,24 @@ async function liberar(mesa: Mesa) {
 const dialogoPedidoAbierto = ref(false)
 const mesaPedido = ref<Mesa | null>(null)
 const cantidades = reactive<Record<number, number>>({})
+const observacionesPorItem = reactive<Record<number, string>>({})
 const enviandoPedido = ref(false)
 
 function abrirDialogoPedido(mesa: Mesa) {
   mesaPedido.value = mesa
   for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
+  for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
   dialogoPedidoAbierto.value = true
 }
 
 const itemsSeleccionados = computed(() =>
   Object.entries(cantidades)
     .filter(([, cantidad]) => cantidad > 0)
-    .map(([menu_item_id, cantidad]) => ({ menu_item_id: Number(menu_item_id), cantidad })),
+    .map(([menu_item_id, cantidad]) => ({
+      menu_item_id: Number(menu_item_id),
+      cantidad,
+      observaciones: observacionesPorItem[Number(menu_item_id)]?.trim() || undefined,
+    })),
 )
 
 async function enviarPedidoMesero() {
@@ -494,11 +505,21 @@ onUnmounted(() => clearInterval(intervalo))
       <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
       <ul v-else class="lista-menu-pedido">
         <li v-for="item in menu" :key="item.id" class="fila-menu-pedido">
-          <div>
-            <p class="nombre-item-menu">{{ item.nombre }}</p>
-            <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+          <div class="fila-menu-pedido-linea">
+            <div>
+              <p class="nombre-item-menu">{{ item.nombre }}</p>
+              <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+            </div>
+            <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
           </div>
-          <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
+          <el-input
+            v-if="(cantidades[item.id] ?? 0) > 0"
+            v-model="observacionesPorItem[item.id]"
+            placeholder="Observaciones (ej: sin lechuga)"
+            size="small"
+            class="input-observaciones-item"
+            maxlength="200"
+          />
         </li>
       </ul>
       <template #footer>
@@ -828,16 +849,23 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .fila-menu-pedido {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .fila-menu-pedido:last-child {
   border-bottom: none;
+}
+
+.fila-menu-pedido-linea {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.input-observaciones-item {
+  margin-top: var(--space-2);
 }
 
 .nombre-item-menu {

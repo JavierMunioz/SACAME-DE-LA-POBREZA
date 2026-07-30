@@ -56,6 +56,13 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Código de acceso al ocupar mesa desde mesero + observaciones por ítem
+Dos faltantes que el usuario detectó probando el flujo de mesero: (1) al ocupar una mesa manualmente (`ocupar-staff`) el backend ya devolvía `codigo_acceso` en la respuesta, pero el frontend lo descartaba — el mesero no tenía forma de decírselo al cliente si después quería sumarse desde su celular vía QR; (2) el diálogo de "Tomar pedido" del mesero solo tenía selector de cantidad, sin campo de texto por ítem — no se podía pedir "sin lechuga" ni nada parecido, aunque el backend siempre soportó `observaciones` por ítem (lo usa el flujo de cliente hace rato).
+
+- `confirmarOcupar()` en `mesero/HomeView.vue` ahora muestra un `ElMessageBox.alert` con el código de 4 dígitos en grande apenas se ocupa la mesa, con la instrucción de para qué sirve.
+- El diálogo de pedido ganó un `el-input` de observaciones por ítem, que solo aparece si esa fila tiene cantidad > 0 (no ensucia la lista con inputs vacíos). Se guarda en un `reactive` paralelo a `cantidades` (`observacionesPorItem`), indexado por `menu_item_id`, y se manda en `itemsSeleccionados` junto con la cantidad — mismo `ItemPedidoInput` que ya usaba el flujo de cliente.
+- Probado en vivo: ocupar mesa muestra el código; pedir "Ceviche mixto" con "sin lechuga" desde mesero lo muestra en la card de Comanda (línea amarilla debajo del ítem) igual que en el flujo de cliente.
+
 ### [2026-07-30] Regla de negocio: no se factura sin entregar el pedido
 Hasta acá, facturar tomaba cualquier pedido en `confirmado`/`preparando`/`listo` — es decir, se podía cobrar un plato que cocina ya había puesto en la ventanilla pero que el mesero todavía no llevó a la mesa. Pedido explícito del usuario: eso no puede pasar.
 
