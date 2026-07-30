@@ -56,6 +56,13 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-29] Fase 4 completa: flujo de cocina
+- Backend: `GET /pedidos` ahora acepta rol `cocina` además de mesero/admin_restaurante, y un query param `estado` opcional. **Detalle importante:** cuando se filtra por `estado=confirmado`, el orden pasa de `created_at` a `confirmado_at` — el FIFO de cocina es por hora de llegada *a cocina* (cuándo el mesero confirmó), no por hora en que el cliente hizo el pedido. Probado explícitamente con un caso donde el pedido creado primero se confirma segundo: aparece segundo en la comanda de cocina, no primero.
+- Frontend: `cocina/HomeView.vue`, mismo patrón de polling que `mesero/HomeView.vue` (5s), pero de solo lectura — sin botones de confirmar/cancelar (esos son atribución del mesero, no de cocina; el backend también lo bloquea con 403 si cocina intenta pegarle a esos endpoints).
+- Cuenta de cocina se crea desde el mismo diálogo "Nueva cuenta" del panel admin que ya existía para mesero (el selector de rol ya incluía "Cocina" desde Fase 3, no hizo falta tocar esa UI).
+- Probado end-to-end en navegador real: dos pedidos confirmados en orden inverso al de creación, la comanda de cocina los muestra en el orden de confirmación correcto (#1 el confirmado primero), con observaciones destacadas visualmente.
+- Con Fase 4 se completa el ciclo completo cliente → mesero → cocina descrito en el Readme. Falta Fase 5 (facturación) y Fase 6 (endurecimiento para producción).
+
 ### [2026-07-29] Fase 3 completa: flujo del mesero
 - **Prerequisito no contemplado en el Plan original:** no existía forma de crear cuentas `mesero`/`cocina`/`admin_restaurante` (solo bootstrap de `admin_general` por CLI y autoregistro de `cliente`). Se agregó `POST /restaurantes/{id}/personal` (admin_general) y una sección "Personal" en el panel admin (`RestauranteDetalleView.vue`) para altas de personal scoped a un restaurante.
 - Backend: `GET /pedidos` (mesero o admin_restaurante, filtrado por `usuario.restaurante_id`), `POST /pedidos/{id}/confirmar`, `POST /pedidos/{id}/cancelar`. Ambos solo permiten actuar sobre pedidos `pendiente` (409 si no) y están scoped al restaurante del mesero — probado que un mesero de otro restaurante ni ve ni puede confirmar pedidos ajenos (test + verificado a mano).
