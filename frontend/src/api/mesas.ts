@@ -22,6 +22,7 @@ export interface MesaQrInfo {
   mesa_libre_ahora: boolean
   estado: 'libre' | 'reservada' | 'ocupada'
   requiere_codigo: boolean
+  requiere_ubicacion: boolean
   menu: MenuItem[]
 }
 
@@ -47,14 +48,38 @@ export async function canjearQr(token: string): Promise<MesaQrInfo> {
 export async function ocuparMesa(
   mesaId: number,
   qrToken: string,
-  opciones: { nombreInvitado?: string; reservaId?: number } = {},
+  opciones: {
+    nombreInvitado?: string
+    reservaId?: number
+    lat?: number
+    lng?: number
+  } = {},
 ): Promise<SesionMesa> {
   const { data } = await api.post<SesionMesa>(`/mesas/${mesaId}/ocupar`, {
     qr_token: qrToken,
     nombre_invitado: opciones.nombreInvitado,
     reserva_id: opciones.reservaId,
+    lat: opciones.lat,
+    lng: opciones.lng,
   })
   return data
+}
+
+/** Pide la ubicación del navegador. `null` si el permiso se niega, el
+ * dispositivo no tiene geolocalización, o tarda más de 8s (por ejemplo
+ * sin señal GPS en interiores) — el llamador decide cómo reaccionar. */
+export function obtenerUbicacion(): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (posicion) => resolve({ lat: posicion.coords.latitude, lng: posicion.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, maximumAge: 60000 },
+    )
+  })
 }
 
 export async function ocuparMesaStaff(

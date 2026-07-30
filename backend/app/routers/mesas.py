@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from math import asin, cos, radians, sin, sqrt
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
@@ -7,7 +8,18 @@ from sqlalchemy.orm import Session
 from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
 from app.core.deps import get_current_user_opcional, require_roles
-from app.models import EstadoMesa, EstadoPedido, EstadoReserva, Mesa, Pedido, Reserva, Rol, SesionMesa, Usuario
+from app.models import (
+    EstadoMesa,
+    EstadoPedido,
+    EstadoReserva,
+    Mesa,
+    Pedido,
+    Reserva,
+    Restaurante,
+    Rol,
+    SesionMesa,
+    Usuario,
+)
 from app.schemas.mesa import (
     MesaQrInfo,
     OcuparMesaRequest,
@@ -22,6 +34,40 @@ router = APIRouter(prefix="/mesas", tags=["mesas"])
 # Ventana de gracia para la llegada: el cliente debe hacer check-in hasta
 # 15 min antes de su reserva (ver Readme.md) o la reserva se libera sola.
 MINUTOS_LLEGADA_ANTICIPADA = 15
+
+# Radio de tolerancia para "estar en el restaurante" al ocupar una mesa
+# por QR: cubre imprecisión típica de GPS en celular (peor todavía en
+# interiores) más el tamaño real de un local. No es una frontera exacta,
+# es margen suficiente para no rechazar gente que sí está ahí (ver
+# Brain.md — bug de QR fotografiado y usado a distancia).
+RADIO_MAXIMO_METROS = 150
+
+
+def _distancia_metros(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Distancia entre dos puntos (fórmula de Haversine, radio terrestre
+    en metros). Suficiente para este caso de uso — no hace falta más
+    precisión que la del GPS de un celular."""
+    radio_tierra_m = 6_371_000
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return radio_tierra_m * 2 * asin(sqrt(a))
+
+
+def _verificar_ubicacion(restaurante: Restaurante, lat: float | None, lng: float | None) -> None:
+    if restaurante.latitud is None or restaurante.longitud is None:
+        return
+    if lat is None or lng is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Necesitamos tu ubicación para ocupar la mesa",
+        )
+    distancia = _distancia_metros(restaurante.latitud, restaurante.longitud, lat, lng)
+    if distancia > RADIO_MAXIMO_METROS:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Tenés que estar en el restaurante para ocupar la mesa",
+        )
 
 
 def _expirar_reservas_vencidas(db: Session, mesa_id: int) -> None:
@@ -130,6 +176,8 @@ def canjear_qr(
         mesa_libre_ahora=mesa_libre_ahora,
         estado=estado,
         requiere_codigo=sesion is not None,
+        requiere_ubicacion=mesa.restaurante.latitud is not None
+        and mesa.restaurante.longitud is not None,
         menu=[MenuItemOut.model_validate(m) for m in mesa.restaurante.menu_items],
     )
 
@@ -147,6 +195,7 @@ def ocupar_mesa(
     if mesa is None or mesa.qr_token != datos.qr_token:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Código QR inválido")
 
+    _verificar_ubicacion(mesa.restaurante, datos.lat, datos.lng)
     _expirar_reservas_vencidas(db, mesa.id)
 
     if _sesion_activa(db, mesa.id) is not None:

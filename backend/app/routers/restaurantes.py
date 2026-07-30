@@ -35,6 +35,7 @@ from app.schemas.restaurante import (
     RestauranteConMenu,
     RestauranteCreate,
     RestauranteOut,
+    RestauranteUpdate,
 )
 from app.schemas.usuario import PersonalCreate, UsuarioOut
 
@@ -97,7 +98,11 @@ def crear_restaurante(
     _admin=Depends(require_roles(Rol.ADMIN_GENERAL)),
 ):
     restaurante = Restaurante(
-        nombre=datos.nombre, descripcion=datos.descripcion, categoria=datos.categoria
+        nombre=datos.nombre,
+        descripcion=datos.descripcion,
+        categoria=datos.categoria,
+        latitud=datos.latitud,
+        longitud=datos.longitud,
     )
     db.add(restaurante)
     db.flush()
@@ -112,6 +117,8 @@ def crear_restaurante(
         nombre=restaurante.nombre,
         descripcion=restaurante.descripcion,
         categoria=restaurante.categoria,
+        latitud=restaurante.latitud,
+        longitud=restaurante.longitud,
         created_at=restaurante.created_at,
         mesas_disponibles=False,
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
@@ -142,6 +149,34 @@ def obtener_restaurante(restaurante_id: int, db: Session = Depends(get_db)):
         nombre=restaurante.nombre,
         descripcion=restaurante.descripcion,
         categoria=restaurante.categoria,
+        latitud=restaurante.latitud,
+        longitud=restaurante.longitud,
+        created_at=restaurante.created_at,
+        mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in restaurante.mesas),
+        menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],
+    )
+
+
+@router.put("/restaurantes/{restaurante_id}", response_model=RestauranteConMenu)
+def editar_restaurante(
+    restaurante_id: int,
+    datos: RestauranteUpdate,
+    db: Session = Depends(get_db),
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+):
+    restaurante = _get_restaurante_o_404(db, restaurante_id)
+    _verificar_acceso_restaurante(admin, restaurante_id)
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        setattr(restaurante, campo, valor)
+    db.commit()
+    db.refresh(restaurante)
+    return RestauranteConMenu(
+        id=restaurante.id,
+        nombre=restaurante.nombre,
+        descripcion=restaurante.descripcion,
+        categoria=restaurante.categoria,
+        latitud=restaurante.latitud,
+        longitud=restaurante.longitud,
         created_at=restaurante.created_at,
         mesas_disponibles=any(m.estado == EstadoMesa.LIBRE for m in restaurante.mesas),
         menu=[MenuItemOut.model_validate(m) for m in restaurante.menu_items],

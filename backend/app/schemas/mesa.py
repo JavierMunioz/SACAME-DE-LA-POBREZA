@@ -48,6 +48,11 @@ class OcuparMesaRequest(BaseModel):
     qr_token: str
     nombre_invitado: str | None = None
     reserva_id: int | None = None
+    # Ubicación del dispositivo al momento de ocupar (ver Brain.md: QR
+    # fotografiado y usado a distancia). Solo se exige si el restaurante
+    # configuró su propia latitud/longitud.
+    lat: float | None = None
+    lng: float | None = None
 
 
 class OcuparMesaStaffRequest(BaseModel):
@@ -78,4 +83,9 @@ class MesaQrInfo(BaseModel):
     # este QR — el frontend debe pedir el código de 4 dígitos en vez de
     # mostrar el menú directamente.
     requiere_codigo: bool
+    # True si el restaurante configuró su ubicación real: el frontend debe
+    # pedir permiso de geolocalización antes de intentar ocupar la mesa
+    # (ver Brain.md). False = no pedir permiso, no rompe restaurantes sin
+    # ubicación configurada.
+    requiere_ubicacion: bool
     menu: list[MenuItemOut]

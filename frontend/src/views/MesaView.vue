@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   canjearQr,
+  obtenerUbicacion,
   ocuparMesa,
   unirseAMesa,
   urlWsCarrito,
@@ -121,31 +122,52 @@ async function cargar() {
   }
 }
 
+// Si el restaurante configuró su ubicación real, hay que pedir permiso de
+// geolocalización antes de ocupar (ver Brain.md: QR fotografiado y usado
+// a distancia). Si el restaurante no la configuró, no se pide nada.
+async function ubicacionParaOcupar(): Promise<{ lat: number; lng: number } | undefined> {
+  if (!info.value?.requiere_ubicacion) return undefined
+  const ubicacion = await obtenerUbicacion()
+  if (!ubicacion) {
+    errorReclamo.value =
+      'Necesitamos tu ubicación para abrir la mesa. Activá la ubicación del navegador e intentá de nuevo.'
+    throw new Error('sin-ubicacion')
+  }
+  return ubicacion
+}
+
 async function reclamarComoInvitado() {
   if (!info.value) return
   if (!nombreInput.value.trim()) {
     errorReclamo.value = 'Necesitamos tu nombre para abrir la mesa'
     return
   }
-  await reclamar(() =>
-    ocuparMesa(info.value!.mesa_id, route.query.token as string, {
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, {
       nombreInvitado: nombreInput.value,
-    }),
-  )
+      ...ubicacion,
+    })
+  })
 }
 
 async function reclamarComoClienteLogueado() {
   if (!info.value) return
-  await reclamar(() => ocuparMesa(info.value!.mesa_id, route.query.token as string, {}))
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, { ...ubicacion })
+  })
 }
 
 async function confirmarLlegada() {
   if (!info.value?.reserva_propia) return
-  await reclamar(() =>
-    ocuparMesa(info.value!.mesa_id, route.query.token as string, {
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, {
       reservaId: info.value!.reserva_propia!.id,
-    }),
-  )
+      ...ubicacion,
+    })
+  })
 }
 
 async function unirseConCodigo() {
@@ -167,8 +189,17 @@ async function reclamar(accion: () => Promise<SesionMesa>) {
     sesion.value = s
     guardarSesion(s)
     if (info.value) conectarCarritoEnVivo(info.value.mesa_id, s.token)
-  } catch {
-    errorReclamo.value = 'No se pudo completar la acción. Puede que alguien se te haya adelantado — recargá la página.'
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'sin-ubicacion') {
+      // el mensaje específico ya quedó seteado en ubicacionParaOcupar.
+    } else {
+      const respuesta = (e as { response?: { status?: number; data?: { detail?: string } } })
+        ?.response
+      errorReclamo.value =
+        respuesta?.status === 403 && respuesta.data?.detail
+          ? respuesta.data.detail
+          : 'No se pudo completar la acción. Puede que alguien se te haya adelantado — recargá la página.'
+    }
   } finally {
     reclamando.value = false
   }

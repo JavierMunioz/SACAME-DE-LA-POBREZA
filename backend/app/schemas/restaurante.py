@@ -10,7 +10,17 @@ class RestauranteCreate(BaseModel):
     nombre: str
     descripcion: str | None = None
     categoria: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     menu_inicial: list[MenuItemCreate] = []
+
+
+class RestauranteUpdate(BaseModel):
+    nombre: str | None = None
+    descripcion: str | None = None
+    categoria: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
 
 
 class RestauranteOut(BaseModel):
@@ -28,6 +38,8 @@ class RestauranteOut(BaseModel):
 
 
 class RestauranteConMenu(RestauranteOut):
+    latitud: float | None = None
+    longitud: float | None = None
     menu: list[MenuItemOut]
 
 

@@ -9,6 +9,7 @@ import {
   crearMesa,
   crearPersonal,
   editarItemMenu,
+  editarRestaurante,
   listarMesas,
   listarPersonal,
   obtenerEstadisticas,
@@ -21,6 +22,7 @@ import {
   type RestauranteConMenu,
   type RolPersonal,
 } from '../../api/restaurantes'
+import { obtenerUbicacion } from '../../api/mesas'
 import { useAuthStore } from '../../stores/auth'
 import AppTopNav from '../../components/AppTopNav.vue'
 
@@ -38,6 +40,52 @@ const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 const form = reactive({ numero: 1, capacidad: 4 })
+
+const dialogoUbicacionAbierto = ref(false)
+const guardandoUbicacion = ref(false)
+const buscandoUbicacion = ref(false)
+const formUbicacion = reactive({ latitud: null as number | null, longitud: null as number | null })
+
+function abrirDialogoUbicacion() {
+  formUbicacion.latitud = restaurante.value?.latitud ?? null
+  formUbicacion.longitud = restaurante.value?.longitud ?? null
+  dialogoUbicacionAbierto.value = true
+}
+
+async function usarUbicacionActual() {
+  buscandoUbicacion.value = true
+  try {
+    const ubicacion = await obtenerUbicacion()
+    if (!ubicacion) {
+      ElMessage.error('No se pudo obtener la ubicación. Activá el permiso en el navegador.')
+      return
+    }
+    formUbicacion.latitud = ubicacion.lat
+    formUbicacion.longitud = ubicacion.lng
+  } finally {
+    buscandoUbicacion.value = false
+  }
+}
+
+async function guardarUbicacion() {
+  guardandoUbicacion.value = true
+  try {
+    const actualizado = await editarRestaurante(restauranteId, {
+      latitud: formUbicacion.latitud,
+      longitud: formUbicacion.longitud,
+    })
+    if (restaurante.value) {
+      restaurante.value.latitud = actualizado.latitud
+      restaurante.value.longitud = actualizado.longitud
+    }
+    dialogoUbicacionAbierto.value = false
+    ElMessage.success('Ubicación guardada')
+  } catch {
+    ElMessage.error('No se pudo guardar la ubicación')
+  } finally {
+    guardandoUbicacion.value = false
+  }
+}
 
 const dialogoMenuAbierto = ref(false)
 const guardandoMenu = ref(false)
@@ -247,6 +295,16 @@ onUnmounted(() => {
         <div>
           <h1>{{ restaurante.nombre }}</h1>
           <p v-if="restaurante.descripcion" class="descripcion">{{ restaurante.descripcion }}</p>
+          <p class="estado-ubicacion">
+            {{
+              restaurante.latitud !== null
+                ? 'Ubicación configurada — el QR exige estar en el local para ocupar mesa'
+                : 'Sin ubicación configurada — cualquiera puede ocupar una mesa escaneando el QR desde donde sea'
+            }}
+            <button type="button" class="link-editar-ubicacion" @click="abrirDialogoUbicacion">
+              {{ restaurante.latitud !== null ? 'Editar' : 'Configurar' }}
+            </button>
+          </p>
         </div>
         <el-button type="primary" size="large" @click="abrirDialogo">Nueva mesa</el-button>
       </div>
@@ -408,6 +466,38 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
+    <el-dialog v-model="dialogoUbicacionAbierto" title="Ubicación del restaurante" width="380px">
+      <p class="texto-ayuda-ubicacion">
+        Si configurás la ubicación real del local, el QR de las mesas va a exigir que quien
+        escanea esté físicamente cerca para poder ocupar una mesa — evita que alguien use una
+        foto del QR desde otro lado.
+      </p>
+      <el-button :loading="buscandoUbicacion" style="width: 100%; margin-bottom: 16px" @click="usarUbicacionActual">
+        Usar mi ubicación actual
+      </el-button>
+      <el-form :model="formUbicacion" label-position="top">
+        <el-form-item label="Latitud">
+          <el-input-number v-model="formUbicacion.latitud" :precision="6" :step="0.0001" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="Longitud">
+          <el-input-number v-model="formUbicacion.longitud" :precision="6" :step="0.0001" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button
+          v-if="formUbicacion.latitud !== null"
+          text
+          @click="formUbicacion.latitud = null; formUbicacion.longitud = null"
+        >
+          Quitar ubicación
+        </el-button>
+        <el-button @click="dialogoUbicacionAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoUbicacion" @click="guardarUbicacion">
+          Guardar
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="dialogoPersonalAbierto" title="Nueva cuenta de personal" width="380px">
       <el-form :model="formPersonal" label-position="top">
         <el-form-item label="Nombre">
@@ -468,6 +558,31 @@ onUnmounted(() => {
 
 .descripcion {
   color: var(--text-secondary);
+}
+
+.estado-ubicacion {
+  margin-top: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.link-editar-ubicacion {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: var(--space-1);
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.texto-ayuda-ubicacion {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
 }
 
 .seccion {

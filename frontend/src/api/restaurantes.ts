@@ -25,7 +25,17 @@ export interface Restaurante {
 }
 
 export interface RestauranteConMenu extends Restaurante {
+  latitud: number | null
+  longitud: number | null
   menu: MenuItem[]
+}
+
+export interface RestauranteUpdate {
+  nombre?: string
+  descripcion?: string
+  categoria?: string
+  latitud?: number | null
+  longitud?: number | null
 }
 
 export interface Mesa {
@@ -67,6 +77,14 @@ export async function listarRestaurantes(): Promise<Restaurante[]> {
 
 export async function obtenerRestaurante(id: number): Promise<RestauranteConMenu> {
   const { data } = await api.get<RestauranteConMenu>(`/restaurantes/${id}`)
+  return data
+}
+
+export async function editarRestaurante(
+  id: number,
+  payload: RestauranteUpdate,
+): Promise<RestauranteConMenu> {
+  const { data } = await api.put<RestauranteConMenu>(`/restaurantes/${id}`, payload)
   return data
 }
 
