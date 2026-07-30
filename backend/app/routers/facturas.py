@@ -47,16 +47,15 @@ async def generar_factura(
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
 
-    # Se factura todo lo que ya pasó por cocina (confirmado, preparando o
-    # listo) y que todavía no esté en otra factura. Lo pendiente no cuenta:
-    # no se le puede cobrar al cliente algo que la cocina ni recibió.
+    # Solo se factura lo que el mesero ya confirmó como entregado en la
+    # mesa (ver Brain.md) — no alcanza con que cocina lo haya marcado
+    # "listo": eso es que está listo para servir, no que ya se sirvió. No
+    # se le cobra al cliente algo que todavía no llegó a la mesa.
     pedidos = (
         db.query(Pedido)
         .filter(
             Pedido.mesa_id == mesa_id,
-            Pedido.estado.in_(
-                [EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO]
-            ),
+            Pedido.estado == EstadoPedido.ENTREGADO,
             Pedido.factura_id.is_(None),
         )
         .all()
@@ -64,7 +63,7 @@ async def generar_factura(
     if not pedidos:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "No hay pedidos confirmados pendientes de facturar en esta mesa",
+            "No hay pedidos entregados pendientes de facturar en esta mesa",
         )
 
     items = [item for pedido in pedidos for item in pedido.items]
@@ -88,7 +87,6 @@ async def generar_factura(
 
     for pedido in pedidos:
         pedido.factura_id = factura.id
-        pedido.estado = EstadoPedido.ENTREGADO
 
     # Facturar cierra la mesa: se acabó la sesión de quien la reclamó, y
     # la mesa vuelve a estar libre para el próximo comensal.

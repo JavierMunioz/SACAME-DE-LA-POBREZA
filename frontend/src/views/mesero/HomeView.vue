@@ -3,7 +3,14 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Tickets, Grid } from '@element-plus/icons-vue'
-import { cancelarPedido, confirmarPedido, crearPedido, listarPedidos, type Pedido } from '../../api/pedidos'
+import {
+  cancelarPedido,
+  confirmarPedido,
+  crearPedido,
+  listarPedidos,
+  marcarEntregado,
+  type Pedido,
+} from '../../api/pedidos'
 import { generarFactura, type Factura } from '../../api/facturas'
 import { liberarMesa, ocuparMesaStaff } from '../../api/mesas'
 import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
@@ -45,19 +52,19 @@ async function cargarMesas() {
 }
 
 const ESTADOS_ACTIVOS = ['pendiente', 'confirmado', 'preparando', 'listo']
-const ESTADOS_EN_COCINA = ['confirmado', 'preparando', 'listo']
 
-// La factura cierra los pedidos en curso (pasan a "entregado"); una vez
-// facturados dejan de ser accionables, no tiene sentido seguir mostrándolos
-// en la comanda activa.
+// Una vez entregado, el pedido sale de la comanda activa (ya no hay nada
+// que el mesero tenga que hacer con él salvo facturarlo). Solo se puede
+// facturar lo entregado (ver Brain.md) — "listo" es cocina avisando que
+// ya se puede servir, no que ya se sirvió.
 const pedidosActivos = computed(() =>
   pedidos.value.filter((p) => ESTADOS_ACTIVOS.includes(p.estado)),
 )
 
 const mesasParaCerrar = computed(() => {
   const vistas = new Map<number, number>()
-  for (const p of pedidosActivos.value) {
-    if (ESTADOS_EN_COCINA.includes(p.estado)) vistas.set(p.mesa_id, p.mesa_numero)
+  for (const p of pedidos.value) {
+    if (p.estado === 'entregado' && p.factura_id === null) vistas.set(p.mesa_id, p.mesa_numero)
   }
   return [...vistas.entries()].map(([mesa_id, mesa_numero]) => ({ mesa_id, mesa_numero }))
 })
@@ -67,6 +74,7 @@ const etiquetaEstado: Record<string, string> = {
   confirmado: 'En cocina',
   preparando: 'Preparando',
   listo: 'Listo para servir',
+  entregado: 'Entregado',
 }
 
 async function confirmar(pedido: Pedido) {
@@ -90,6 +98,19 @@ async function cancelar(pedido: Pedido) {
     await cargar()
   } catch {
     ElMessage.error('No se pudo cancelar el pedido')
+  } finally {
+    procesando.value = null
+  }
+}
+
+async function entregar(pedido: Pedido) {
+  procesando.value = pedido.id
+  try {
+    await marcarEntregado(pedido.id)
+    ElMessage.success(`Mesa ${pedido.mesa_numero} entregada`)
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo marcar como entregado')
   } finally {
     procesando.value = null
   }
@@ -334,6 +355,17 @@ onUnmounted(() => clearInterval(intervalo))
                 @click="confirmar(pedido)"
               >
                 Confirmar
+              </el-button>
+            </div>
+            <div v-else-if="pedido.estado === 'listo'" class="acciones-pedido">
+              <el-button
+                type="success"
+                size="large"
+                :loading="procesando === pedido.id"
+                class="boton-accion"
+                @click="entregar(pedido)"
+              >
+                Marcar entregado
               </el-button>
             </div>
           </article>

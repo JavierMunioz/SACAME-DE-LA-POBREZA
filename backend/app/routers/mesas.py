@@ -280,14 +280,8 @@ def liberar_mesa(
         db.query(Pedido)
         .filter(
             Pedido.mesa_id == mesa.id,
-            Pedido.estado.in_(
-                [
-                    EstadoPedido.PENDIENTE,
-                    EstadoPedido.CONFIRMADO,
-                    EstadoPedido.PREPARANDO,
-                    EstadoPedido.LISTO,
-                ]
-            ),
+            Pedido.estado != EstadoPedido.CANCELADO,
+            Pedido.factura_id.is_(None),
         )
         .count()
     )

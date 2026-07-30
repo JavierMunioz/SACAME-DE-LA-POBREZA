@@ -40,4 +40,5 @@ class PedidoOut(BaseModel):
     estado: EstadoPedido
     created_at: datetime
     confirmado_at: datetime | None
+    factura_id: int | None
     items: list[ItemPedidoOut]

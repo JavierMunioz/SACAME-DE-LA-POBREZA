@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.core.database import SessionLocal
-from app.models import Reserva
+from app.models import EstadoPedido, Pedido, Reserva
 
 
 def _crear_confirmar_y_facturar(client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cantidad=1):
@@ -18,6 +18,12 @@ def _crear_confirmar_y_facturar(client, restaurante_con_mesa, cliente_autenticad
     )
     pedido_id = r.json()["id"]
     client.post(f"/pedidos/{pedido_id}/confirmar", headers=mesero_autenticado["headers"])
+    # Solo se factura lo entregado (ver Brain.md).
+    db = SessionLocal()
+    db_pedido = db.get(Pedido, pedido_id)
+    db_pedido.estado = EstadoPedido.ENTREGADO
+    db.commit()
+    db.close()
     factura = client.post(
         f"/mesas/{mesa_id}/factura",
         json={"incluye_propina": False},

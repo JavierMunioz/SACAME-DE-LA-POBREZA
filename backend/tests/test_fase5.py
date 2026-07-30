@@ -1,5 +1,8 @@
 from decimal import Decimal
 
+from app.core.database import SessionLocal
+from app.models import EstadoPedido, Pedido
+
 
 def _crear_y_confirmar_pedido(client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cantidad=1):
     r = client.post(
@@ -14,6 +17,14 @@ def _crear_y_confirmar_pedido(client, restaurante_con_mesa, cliente_autenticado,
     )
     pedido_id = r.json()["id"]
     client.post(f"/pedidos/{pedido_id}/confirmar", headers=mesero_autenticado["headers"])
+    # Solo se factura lo entregado (ver Brain.md) — acá se prueba
+    # facturación, no el recorrido completo por cocina, así que se salta
+    # directo a "entregado" en la base.
+    db = SessionLocal()
+    pedido = db.get(Pedido, pedido_id)
+    pedido.estado = EstadoPedido.ENTREGADO
+    db.commit()
+    db.close()
     return pedido_id
 
 

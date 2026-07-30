@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.core.database import SessionLocal
-from app.models import Reserva
+from app.models import EstadoPedido, Pedido, Reserva
 
 
 def test_ocupar_mesa_la_bloquea_para_otro_invitado(client, restaurante_con_mesa):
@@ -200,6 +200,12 @@ def test_factura_libera_la_mesa_y_cierra_la_sesion(
         },
     ).json()
     client.post(f"/pedidos/{pedido['id']}/confirmar", headers=mesero_autenticado["headers"])
+    # Solo se factura lo entregado (ver Brain.md).
+    db = SessionLocal()
+    db_pedido = db.get(Pedido, pedido["id"])
+    db_pedido.estado = EstadoPedido.ENTREGADO
+    db.commit()
+    db.close()
 
     factura = client.post(
         f"/mesas/{mesa.id}/factura",

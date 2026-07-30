@@ -62,9 +62,11 @@ def test_mesero_no_puede_marcar_preparando(
     assert r.status_code == 403
 
 
-def test_facturar_incluye_pedidos_en_preparando_y_listo(
+def test_no_se_puede_facturar_pedido_listo_pero_no_entregado(
     client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cocina_autenticado
 ):
+    # "Listo" es cocina avisando que ya se puede servir — no que ya se
+    # sirvió. No se cobra algo que todavía no llegó a la mesa.
     mesa_id = restaurante_con_mesa["mesa"].id
     pedido_id = _pedido_confirmado(
         client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado
@@ -77,5 +79,51 @@ def test_facturar_incluye_pedidos_en_preparando_y_listo(
         json={"incluye_propina": False},
         headers=mesero_autenticado["headers"],
     )
+    assert r.status_code == 422
+
+
+def test_mesero_marca_entregado_y_recien_ahi_se_puede_facturar(
+    client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cocina_autenticado
+):
+    mesa_id = restaurante_con_mesa["mesa"].id
+    pedido_id = _pedido_confirmado(
+        client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado
+    )
+    client.post(f"/pedidos/{pedido_id}/marcar-preparando", headers=cocina_autenticado["headers"])
+    client.post(f"/pedidos/{pedido_id}/marcar-listo", headers=cocina_autenticado["headers"])
+
+    entregado = client.post(
+        f"/pedidos/{pedido_id}/marcar-entregado", headers=mesero_autenticado["headers"]
+    )
+    assert entregado.status_code == 200
+    assert entregado.json()["estado"] == "entregado"
+
+    r = client.post(
+        f"/mesas/{mesa_id}/factura",
+        json={"incluye_propina": False},
+        headers=mesero_autenticado["headers"],
+    )
     assert r.status_code == 201
     assert len(r.json()["items"]) == 1
+
+
+def test_no_se_puede_marcar_entregado_si_no_esta_listo(
+    client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado
+):
+    pedido_id = _pedido_confirmado(
+        client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado
+    )
+    r = client.post(f"/pedidos/{pedido_id}/marcar-entregado", headers=mesero_autenticado["headers"])
+    assert r.status_code == 409
+
+
+def test_cocina_no_puede_marcar_entregado(
+    client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado, cocina_autenticado
+):
+    pedido_id = _pedido_confirmado(
+        client, restaurante_con_mesa, cliente_autenticado, mesero_autenticado
+    )
+    client.post(f"/pedidos/{pedido_id}/marcar-preparando", headers=cocina_autenticado["headers"])
+    client.post(f"/pedidos/{pedido_id}/marcar-listo", headers=cocina_autenticado["headers"])
+    r = client.post(f"/pedidos/{pedido_id}/marcar-entregado", headers=cocina_autenticado["headers"])
+    assert r.status_code == 403

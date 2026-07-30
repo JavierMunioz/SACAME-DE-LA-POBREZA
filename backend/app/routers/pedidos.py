@@ -22,6 +22,7 @@ def _pedido_a_out(pedido: Pedido) -> PedidoOut:
         estado=pedido.estado,
         created_at=pedido.created_at,
         confirmado_at=pedido.confirmado_at,
+        factura_id=pedido.factura_id,
         items=[
             ItemPedidoOut(
                 id=i.id,
@@ -251,6 +252,25 @@ def marcar_listo(
     if pedido.estado != EstadoPedido.PREPARANDO:
         raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está en preparación")
     pedido.estado = EstadoPedido.LISTO
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-entregado", response_model=PedidoOut)
+def marcar_entregado(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    mesero: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    """El mesero confirma que ya llevó el plato a la mesa. Separado de
+    `marcar-listo` (que es cocina avisando que ya está para servir): solo
+    a partir de acá el pedido se puede facturar — no se cobra algo que
+    todavía no llegó a la mesa (ver Brain.md)."""
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, mesero.restaurante_id)
+    if pedido.estado != EstadoPedido.LISTO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido todavía no está listo")
+    pedido.estado = EstadoPedido.ENTREGADO
     db.commit()
     db.refresh(pedido)
     return _pedido_a_out(pedido)

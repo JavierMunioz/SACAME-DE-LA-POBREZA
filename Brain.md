@@ -56,6 +56,17 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-30] Regla de negocio: no se factura sin entregar el pedido
+Hasta acá, facturar tomaba cualquier pedido en `confirmado`/`preparando`/`listo` — es decir, se podía cobrar un plato que cocina ya había puesto en la ventanilla pero que el mesero todavía no llevó a la mesa. Pedido explícito del usuario: eso no puede pasar.
+
+- Se separó "listo para servir" (cocina, ya existía) de "entregado" (nuevo, lo marca el mesero): `POST /pedidos/{id}/marcar-entregado`, `listo -> entregado`, rol `mesero`/`admin_restaurante`, 409 si el pedido no está `listo`.
+- `generar_factura` ahora solo toma pedidos en estado `entregado` (antes tomaba confirmado/preparando/listo, y de paso los pasaba a entregado — eso desaparece, ya llegan entregados). Sin pedidos entregados sin facturar: 422 "No hay pedidos entregados pendientes de facturar en esta mesa".
+- `liberar_mesa` (mesero) ahora bloquea con cualquier pedido sin `factura_id` que no esté cancelado — antes solo miraba pendiente/confirmado/preparando/listo y se olvidaba de un entregado-sin-facturar, que también es plata sin cobrar.
+- `PedidoOut` ganó el campo `factura_id` (antes no viajaba al frontend) — lo necesita el mesero para saber qué pedidos entregados todavía no se facturaron sin tener que adivinar por el `estado` (que una vez "entregado" no vuelve a cambiar).
+- Frontend (`mesero/HomeView.vue`): la card de un pedido `listo` ahora tiene un botón "Marcar entregado" (verde) en vez de desaparecer directo a la franja "Listas para cerrar" — esa franja pasó a armarse a partir de pedidos `entregado` sin facturar, no de `confirmado/preparando/listo` como antes (eso mostraba la franja prematuramente, cuando el plato ni había salido de cocina).
+- Tests: `test_fase6_kds.py` tenía un test que literalmente se llamaba `test_facturar_incluye_pedidos_en_preparando_y_listo` — afirmaba el comportamiento viejo a propósito. Se reemplazó por 3 tests nuevos que prueban la regla nueva (no se factura listo-sin-entregar, entregar habilita facturar, cocina no puede marcar entregado). Los helpers de `test_fase5.py`, `test_fase7_sesiones_mesa.py` y `test_fase9_estadisticas.py` que armaban un pedido facturable ahora lo empujan a `entregado` directo en la base antes de facturar (no repiten el recorrido completo por cocina en cada test de facturación, eso ya está cubierto en fase6_kds). Suite completa: 71/71.
+- Probado en vivo el recorrido completo con las 3 cuentas reales (mesero, cocina, admin_restaurante): pedido → confirmar → cocina prepara/lista → mesero ve "Marcar entregado" en la card → al entregar, la mesa aparece en "Listas para cerrar" → factura → mesa libre de nuevo. No hay ningún botón de facturar disponible antes de marcar entregado — la regla queda garantizada también por diseño de UI, no solo por el 422 del backend.
+
 ### [2026-07-30] Edición de menú + acciones de mesa desde mesero + regla de 2h en reservas
 Pedido del usuario en tres partes: (1) el menú de un restaurante se podía crear en el alta inicial pero nunca editar — no había ni endpoint PUT ni UI; (2) probando el flujo de guest checkout desde incógnito, el usuario ocupó una mesa vía QR, salió sin pedir, y quedó sin forma de liberarla — la única vía para cerrar una `SesionMesa` era facturar, y sin pedidos no había nada que facturar; (3) pidió que una reserva no se pueda hacer con menos de 2 horas de anticipación, para darle margen real a cocina/mesero.
 
