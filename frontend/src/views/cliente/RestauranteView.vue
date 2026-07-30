@@ -272,7 +272,7 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   padding: var(--space-5);
   text-align: center;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
   display: flex;
   flex-direction: column;
   align-items: center;

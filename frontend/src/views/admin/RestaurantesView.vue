@@ -176,7 +176,7 @@ onMounted(cargar)
 
 .encabezado {
   padding: var(--gutter);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 85%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
@@ -207,7 +207,7 @@ onMounted(cargar)
 }
 
 .nav-item--activo {
-  background: var(--color-surface-container-high);
+  background: var(--surface-muted);
   color: var(--color-secondary);
 }
 
@@ -281,14 +281,14 @@ onMounted(cargar)
   border-radius: var(--radius-md);
   padding: var(--space-6);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
   transition:
     box-shadow var(--duration-base) var(--ease-standard),
     border-color var(--duration-base) var(--ease-standard);
 }
 
 .tarjeta-restaurante:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
   border-color: var(--color-secondary);
 }
 

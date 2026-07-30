@@ -31,7 +31,7 @@ async function enviar() {
 <template>
   <div class="pagina">
     <div class="fondo-hero" aria-hidden="true"></div>
-    <div class="tarjeta">
+    <div class="tarjeta glass-panel">
       <div class="marca">
         <span class="marca-icono"><el-icon :size="20"><KnifeFork /></el-icon></span>
         <span class="marca-nombre">Sacame de la Pobreza</span>
@@ -108,8 +108,10 @@ async function enviar() {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 15% 20%, rgba(79, 70, 229, 0.08), transparent 45%),
-    radial-gradient(circle at 85% 80%, rgba(24, 24, 27, 0.06), transparent 45%);
+    radial-gradient(circle at 12% 15%, rgba(79, 70, 229, 0.22), transparent 42%),
+    radial-gradient(circle at 88% 20%, rgba(79, 70, 229, 0.12), transparent 38%),
+    radial-gradient(circle at 80% 85%, rgba(24, 24, 27, 0.16), transparent 45%),
+    radial-gradient(circle at 10% 90%, rgba(79, 70, 229, 0.1), transparent 40%);
   pointer-events: none;
 }
 
@@ -117,10 +119,7 @@ async function enviar() {
   position: relative;
   width: 100%;
   max-width: 400px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
   padding: var(--space-8);
 }
 

@@ -1,35 +1,19 @@
 /*
- * Design system — "Epicurean" (línea de diseño provista por el cliente).
- * Minimalista-premium: negro (Modern Charcoal) como color estructural,
- * indigo (Gastro Indigo) como acento funcional/interactivo, tipografía
- * Geist para todo salvo timers/montos que usan Geist Mono.
+ * Sistema de diseño — base minimalista Linear/Stripe, organización Bento
+ * en dashboards, relieve Soft UI ligero en tarjetas, glassmorphism
+ * reservado a login/homepage/modales. Paleta: negro + indigo (fija,
+ * pedida explícitamente por el cliente — no se toca).
  */
 
 :root {
-  /* ---- Color: superficie (Material-ish, del DESIGN.md) ---- */
-  --color-surface: #f8f9ff;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #eff4ff;
-  --color-surface-container: #e5eeff;
-  --color-surface-container-high: #dce9ff;
-  --color-surface-container-highest: #d3e4fe;
-
-  --color-on-surface: #0b1c30;
-  --color-on-surface-variant: #47464b;
-  --color-outline: #77767b;
-  --color-outline-variant: #c8c5cb;
-
-  /* ---- Color: marca ---- */
+  /* ---- Paleta (intacta) ---- */
   --color-primary: #18181b;
-  /* Modern Charcoal */
   --color-on-primary: #ffffff;
   --color-secondary: #4f46e5;
-  /* Gastro Indigo */
   --color-secondary-hover: #4338ca;
   --color-on-secondary: #ffffff;
   --color-secondary-soft: #eef2ff;
 
-  /* ---- Estados ---- */
   --color-success: #16a34a;
   --color-success-bg: #dcfce7;
   --color-success-text: #15803d;
@@ -42,22 +26,24 @@
   --color-info: var(--color-secondary);
   --color-info-bg: var(--color-secondary-soft);
 
-  /* ---- Superficie semántica ---- */
-  --surface: var(--color-surface);
-  --surface-sunken: var(--color-surface);
-  --surface-raised: var(--color-surface-container-lowest);
-  --text-primary: var(--color-on-surface);
-  --text-secondary: var(--color-on-surface-variant);
-  --text-tertiary: var(--color-outline);
-  --border-subtle: var(--color-outline-variant);
-  --border-default: var(--color-outline-variant);
+  /* ---- Superficie: fondo casi-blanco, sin blanco puro (evita el look
+     "print" chato) ---- */
+  --surface-sunken: #fafafa;
+  --surface-raised: #ffffff;
+  --surface-muted: #f4f4f6;
+
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #a1a1aa;
+  --border-subtle: #ececef;
+  --border-default: #e4e4e7;
 
   /* ---- Tipografía ---- */
   --font-display: 'Geist Variable', 'Geist', system-ui, sans-serif;
   --font-body: 'Geist Variable', 'Geist', system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 
-  /* ---- Espaciado (base 4px, del DESIGN.md) ---- */
+  /* ---- Espaciado (base 4px) ---- */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -70,115 +56,152 @@
   --space-16: 64px;
   --gutter: 24px;
 
-  /* ---- Radios (del DESIGN.md: sm .25rem, DEFAULT .5rem, md .75rem, lg 1rem, xl 1.5rem) ---- */
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
+  /* ---- Radios: escala Linear (chica y consistente, no pill-heavy) ---- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
   --radius-full: 9999px;
 
-  /* ---- Sombras (Elevation & Depth, del DESIGN.md) ---- */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.02);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  /* ---- Sombras planas (Stripe/Linear: casi nada, solo separación) ---- */
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-md: 0 4px 12px rgba(24, 24, 27, 0.06);
+  --shadow-lg: 0 16px 32px rgba(24, 24, 27, 0.1);
 
-  /* ---- Movimiento ---- */
+  /* ---- Soft UI: relieve de doble tono, acento puntual sobre tarjetas
+     destacadas (no la base plana de toda la app). ---- */
+  --shadow-soft: -3px -3px 8px rgba(255, 255, 255, 0.8), 4px 4px 12px rgba(24, 24, 27, 0.06);
+  --shadow-soft-hover: -4px -4px 10px rgba(255, 255, 255, 0.85), 6px 6px 16px rgba(24, 24, 27, 0.09);
+  --highlight-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* ---- Glass: solo login/homepage/modales ---- */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-blur: blur(22px) saturate(160%);
+
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
-  --duration-base: 200ms;
+  --duration-base: 180ms;
 
-  --sidebar-width: 280px;
+  --sidebar-width: 264px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ---- Reset base ---- */
-*,
-*::before,
-*::after {
+/* ---- Reset ---- */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
 }
 
-html {
-  color-scheme: light;
-}
+html { color-scheme: light; }
 
 body {
   min-height: 100vh;
   background: var(--surface-sunken);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.55;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2,
-h3 {
+h1, h2, h3 {
   font-family: var(--font-display);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 
-/* Escala del DESIGN.md: h1 30/38, h2 24/32, h3 20/28 */
-h1 {
-  font-size: 1.875rem;
-  line-height: 2.375rem;
-}
+h1 { font-size: 1.75rem; line-height: 2.25rem; }
+h2 { font-size: 1.375rem; line-height: 1.875rem; }
+h3 { font-size: 1.125rem; line-height: 1.625rem; }
 
-h2 {
-  font-size: 1.5rem;
-  line-height: 2rem;
-}
+.font-mono { font-family: var(--font-mono); }
 
-h3 {
-  font-size: 1.25rem;
-  line-height: 1.75rem;
-}
-
-.font-mono {
-  font-family: var(--font-mono);
-}
-
-/* Micro-labels uppercase mono (ej. "ADMINISTRADOR", "MESA", "CAPACIDAD
-   ACTUAL") — patrón visual repetido en todo el mockup Epicurean. */
 .label-mono {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
+/* ---- Bento: utilidades de grilla reusables para dashboards ---- */
+.bento {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.bento-2col {
+  grid-template-columns: 1fr 1fr;
+}
+
+.bento-span-2 { grid-column: span 2; }
+.bento-span-2-rows { grid-row: span 2; }
+
+@media (max-width: 860px) {
+  .bento, .bento-2col {
+    grid-template-columns: 1fr !important;
+  }
+  .bento-span-2, .bento-span-2-rows {
+    grid-column: span 1;
+    grid-row: span 1;
+  }
+}
+
+/* ---- Soft UI: acento puntual, no la base de toda tarjeta ---- */
+.card-soft {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.card-soft:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
+}
+
+/* ---- Glass: login/homepage/modales exclusivamente ---- */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--shadow-lg);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-panel { background: var(--surface-raised); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ---- Tactile feedback ---- */
-button,
-.el-button {
-  transition:
-    transform var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard);
+button, .el-button {
+  transition: transform var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard);
 }
 
-button:active,
-.el-button:active {
-  transform: scale(0.98);
-}
+button:active, .el-button:active { transform: scale(0.98); }
 
-/* ---- Element Plus retematizado con nuestros tokens ---- */
+/* ---- Element Plus retematizado ---- */
 :root {
   --el-color-primary: var(--color-secondary);
   --el-color-primary-light-3: var(--color-secondary-soft);
@@ -216,9 +239,6 @@ button:active,
   font-weight: 500;
 }
 
-/* Botón primario negro y autoritativo, como manda el DESIGN.md (Primary:
-   Modern Charcoal). El indigo (--el-color-primary) queda para focus/acentos
-   interactivos de Element Plus, no para el botón de acción principal. */
 .el-button--primary {
   --el-button-bg-color: var(--color-primary);
   --el-button-border-color: var(--color-primary);
@@ -231,10 +251,32 @@ button:active,
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   border-color: var(--border-subtle);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.el-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .el-dialog {
   border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .el-dialog {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+.el-overlay {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .el-input__wrapper,
