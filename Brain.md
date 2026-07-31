@@ -56,6 +56,15 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] Se eliminó el glassmorphism de toda la app
+Pedido directo del usuario: sacar todos los efectos glass. El sistema de diseño original (pasada Epicurean/Stitch) lo reservaba a puntos específicos (login, home cliente, modales) — se sacó por completo, no se dejó ningún resto.
+
+- `design-system.css`: se borraron `--glass-bg`/`--glass-border`/`--glass-blur`, la clase `.glass-panel` entera (con sus `@supports`/`@media prefers-reduced-transparency`), y el tratamiento glass de `.el-dialog` (ahora `background: var(--surface-raised)` sólido) y `.el-overlay` (ya no tiene `backdrop-filter: blur(2px)`) — esto último afectaba a **todos** los modales de la app de una sola vez, no había que tocarlos uno por uno.
+- `AppTopNav.vue` (nav de admin/mesero): sacada la clase `glass-panel`, agregado `background: var(--surface-raised)` sólido al `.topnav`.
+- `cliente/HomeView.vue`: header sin `glass-panel` (mismo fix, `background: var(--surface-raised)`); además los dos `backdrop-filter: blur(4px)` locales (badge "Mesas disponibles" y botón de favorito sobre la foto) se sacaron, con el fondo ya opaco no hacía falta el blur para que se leyeran.
+- `LoginView.vue`/`RegistroView.vue`: el panel de marca (oscuro, con el gradiente radial indigo) ya tenía fondo sólido propio — sacar `glass-panel` no le cambió nada visualmente, solo dejó de tener blur/borde translúcido encima.
+- Typecheck y build de frontend limpios. Verificado visualmente en vivo: login, home cliente (header + modal "¿Cómo funciona?"), y el nav de admin/mesero — todos sólidos, cero blur.
+
 ### [2026-07-31] Rediseño del diálogo "Tomar pedido" del mesero (mockup pegado)
 Mismo patrón que las dos pasadas anteriores: usuario pegó un mockup pidiendo que el diálogo de tomar pedido del panel de mesero (`mesero/HomeView.vue`) se viera así — header con ícono de bolsa en círculo + "Tomar pedido"/"Mesa N", foto redonda por plato, stepper en caja con bordes, caja "Resumen del pedido" resaltada (ícono + cantidad de productos + total), footer con Cancelar y "Enviar pedido" con ícono de avión de papel.
 

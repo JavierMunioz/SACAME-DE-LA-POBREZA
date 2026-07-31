@@ -36,7 +36,7 @@ async function enviar() {
 
 <template>
   <div class="pagina">
-    <aside class="panel-marca glass-panel">
+    <aside class="panel-marca">
       <div class="marca-icono">
         <el-icon :size="26"><KnifeFork /></el-icon>
       </div>

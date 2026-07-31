@@ -9,7 +9,7 @@ const emit = defineEmits<{ salir: [] }>()
 </script>
 
 <template>
-  <header class="topnav glass-panel">
+  <header class="topnav">
     <div class="topnav-marca">
       <div class="topnav-marca-icono">
         <el-icon :size="16"><KnifeFork /></el-icon>
@@ -40,6 +40,7 @@ const emit = defineEmits<{ salir: [] }>()
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-3) var(--space-6);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;

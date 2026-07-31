@@ -1,8 +1,8 @@
 /*
  * Sistema de diseño — base minimalista Linear/Stripe, organización Bento
- * en dashboards, relieve Soft UI ligero en tarjetas, glassmorphism
- * reservado a login/homepage/modales. Paleta: negro + indigo (fija,
- * pedida explícitamente por el cliente — no se toca).
+ * en dashboards, relieve Soft UI ligero en tarjetas (sin glassmorphism,
+ * sacado a pedido del cliente). Paleta: negro + indigo (fija, pedida
+ * explícitamente por el cliente — no se toca).
  */
 
 :root {
@@ -73,11 +73,6 @@
   --shadow-soft: -3px -3px 8px rgba(255, 255, 255, 0.8), 4px 4px 12px rgba(24, 24, 27, 0.06);
   --shadow-soft-hover: -4px -4px 10px rgba(255, 255, 255, 0.85), 6px 6px 16px rgba(24, 24, 27, 0.09);
   --highlight-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-
-  /* ---- Glass: solo login/homepage/modales ---- */
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.55);
-  --glass-blur: blur(22px) saturate(160%);
 
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
@@ -199,27 +194,6 @@ h3 { font-size: 1.125rem; line-height: 1.625rem; }
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
-/* ---- Glass: login/homepage/modales exclusivamente ---- */
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--shadow-lg);
-}
-
-@supports not (backdrop-filter: blur(1px)) {
-  .glass-panel { background: var(--surface-raised); }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .glass-panel {
-    background: var(--surface-raised);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
 /* ---- Tactile feedback ---- */
 button, .el-button {
   transition: transform var(--duration-fast) var(--ease-standard),
@@ -287,23 +261,8 @@ button:active, .el-button:active { transform: scale(0.98); }
 
 .el-dialog {
   border-radius: var(--radius-lg);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .el-dialog {
-    background: var(--surface-raised);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
-.el-overlay {
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
 }
 
 .el-input__wrapper,

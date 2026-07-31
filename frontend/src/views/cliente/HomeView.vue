@@ -75,7 +75,7 @@ onMounted(async () => {
 
 <template>
   <div class="pagina">
-    <header class="encabezado glass-panel">
+    <header class="encabezado">
       <div class="marca">
         <span class="marca-icono">S</span>
         <span class="marca-nombre">Sacame de la Pobreza</span>
@@ -233,6 +233,7 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-4) var(--space-6);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
@@ -475,8 +476,7 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-1);
   padding: 4px var(--space-3);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(4px);
+  background: var(--surface-raised);
   border-radius: var(--radius-full);
   font-size: 0.7rem;
   font-weight: 600;
@@ -500,8 +500,7 @@ onMounted(async () => {
   place-items: center;
   border-radius: var(--radius-full);
   border: none;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(4px);
+  background: var(--surface-raised);
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: 1rem;
