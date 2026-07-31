@@ -69,6 +69,10 @@ class PedidoOut(BaseModel):
     created_at: datetime
     confirmado_at: datetime | None
     factura_id: int | None
+    # Denormalizado desde la Factura para que el repartidor sepa cuánto
+    # cobrar sin tener que pegarle a /facturas/{id} aparte.
+    factura_total: Decimal | None
+    factura_pagado: bool | None
     items: list[ItemPedidoOut]
 
 
@@ -79,3 +83,11 @@ class UbicacionUpdate(BaseModel):
 
 class AsignarRepartidor(BaseModel):
     repartidor_id: int
+
+
+class MarcarEntregadoInput(BaseModel):
+    # Domicilio interno cobra contra entrega: al marcar entregado, el
+    # repartidor también confirma si cobró (default sí — es lo esperado
+    # en el camino feliz). Mesa/rappi/didi lo ignoran, no tienen
+    # prefactura en este punto del flujo.
+    pagado: bool = True

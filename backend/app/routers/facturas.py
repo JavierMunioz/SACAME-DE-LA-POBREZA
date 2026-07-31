@@ -18,11 +18,14 @@ def _factura_a_out(factura: Factura, items: list[ItemPedidoOut]) -> FacturaOut:
     return FacturaOut(
         id=factura.id,
         mesa_id=factura.mesa_id,
-        mesa_numero=factura.mesa.numero,
+        mesa_numero=factura.mesa.numero if factura.mesa else None,
+        restaurante_id=factura.restaurante_id,
         subtotal=factura.subtotal,
         incluye_propina=factura.incluye_propina,
         propina=factura.propina,
         total=factura.total,
+        pagado=factura.pagado,
+        pagado_at=factura.pagado_at,
         created_at=factura.created_at,
         items=items,
     )
@@ -77,10 +80,16 @@ async def generar_factura(
 
     factura = Factura(
         mesa_id=mesa_id,
+        restaurante_id=mesa.restaurante_id,
         subtotal=subtotal,
         incluye_propina=datos.incluye_propina,
         propina=propina,
         total=total,
+        # Se asume cobrada al cerrar la mesa, como siempre funcionó este
+        # flujo — a diferencia de la prefactura de domicilio, que nace
+        # sin pagar (ver POST /pedidos/{id}/prefactura).
+        pagado=True,
+        pagado_at=datetime.now(timezone.utc),
     )
     db.add(factura)
     db.flush()
@@ -125,8 +134,7 @@ def obtener_factura(
 ):
     factura = (
         db.query(Factura)
-        .join(Mesa)
-        .filter(Factura.id == factura_id, Mesa.restaurante_id == mesero.restaurante_id)
+        .filter(Factura.id == factura_id, Factura.restaurante_id == mesero.restaurante_id)
         .first()
     )
     if factura is None:

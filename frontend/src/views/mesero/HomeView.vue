@@ -2,16 +2,18 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Tickets, Grid, Bell, ShoppingBag, Document, Promotion } from '@element-plus/icons-vue'
+import { Tickets, Grid, Bell, ShoppingBag, Document, Promotion, Van } from '@element-plus/icons-vue'
 import {
   cancelarPedido,
   confirmarPedido,
   crearPedido,
+  crearPedidoDomicilio,
   listarPedidos,
   marcarEntregado,
+  type CanalPedido,
   type Pedido,
 } from '../../api/pedidos'
-import { generarFactura, type Factura } from '../../api/facturas'
+import { generarFactura, generarPrefactura, type Factura } from '../../api/facturas'
 import { atenderLlamado, liberarMesa, ocuparMesaStaff } from '../../api/mesas'
 import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
@@ -203,6 +205,43 @@ function imprimir() {
   window.print()
 }
 
+// Prefactura de domicilio interno: el mesero la genera antes de asignar
+// repartidor (mismo comprobante que la factura de mesa, pero nace sin
+// pagar) — se la entrega impresa al repartidor, que la cobra contra
+// entrega (ver Brain.md).
+const dialogoPrefacturaAbierto = ref(false)
+const generandoPrefactura = ref(false)
+const pedidoAPrefacturar = ref<Pedido | null>(null)
+const formPrefactura = reactive({ incluirPropina: false, porcentaje: 10 })
+
+const prefacturaVoucherAbierta = ref(false)
+const prefacturaVoucher = ref<Factura | null>(null)
+
+function abrirDialogoPrefactura(pedido: Pedido) {
+  pedidoAPrefacturar.value = pedido
+  formPrefactura.incluirPropina = false
+  formPrefactura.porcentaje = 10
+  dialogoPrefacturaAbierto.value = true
+}
+
+async function confirmarPrefactura() {
+  if (!pedidoAPrefacturar.value) return
+  generandoPrefactura.value = true
+  try {
+    prefacturaVoucher.value = await generarPrefactura(pedidoAPrefacturar.value.id, {
+      incluye_propina: formPrefactura.incluirPropina,
+      porcentaje_propina: (formPrefactura.porcentaje / 100).toFixed(2),
+    })
+    dialogoPrefacturaAbierto.value = false
+    prefacturaVoucherAbierta.value = true
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo generar la prefactura')
+  } finally {
+    generandoPrefactura.value = false
+  }
+}
+
 const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
   libre: 'Libre',
   reservada: 'Reservada',
@@ -303,6 +342,13 @@ function pedidoEsTocable(pedido: Pedido): boolean {
 
 function onClickPedido(pedido: Pedido) {
   if (!pedidoEsTocable(pedido)) return
+  // Generar la prefactura abre un diálogo de verdad (como ocupar una
+  // mesa libre), no el mini-menú superpuesto — es un formulario, no una
+  // elección entre acciones cortas.
+  if (pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && !pedido.factura_id) {
+    abrirDialogoPrefactura(pedido)
+    return
+  }
   menuPedidoAbierto.value = menuPedidoAbierto.value === pedido.id ? null : pedido.id
 }
 
@@ -327,12 +373,25 @@ async function atender(mesa: Mesa) {
 
 const dialogoPedidoAbierto = ref(false)
 const mesaPedido = ref<Mesa | null>(null)
+// Null = pedido de mesa (mesaPedido manda); con valor = pedido externo
+// sin mesa, registrado a mano porque no hay integración real con la API
+// de Rappi/Didi (ver Brain.md).
+const canalPedidoExterno = ref<Extract<CanalPedido, 'rappi' | 'didi'> | null>(null)
 const cantidades = reactive<Record<number, number>>({})
 const observacionesPorItem = reactive<Record<number, string>>({})
 const enviandoPedido = ref(false)
 
 function abrirDialogoPedido(mesa: Mesa) {
   mesaPedido.value = mesa
+  canalPedidoExterno.value = null
+  for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
+  for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
+  dialogoPedidoAbierto.value = true
+}
+
+function abrirDialogoPedidoExterno() {
+  mesaPedido.value = null
+  canalPedidoExterno.value = 'rappi'
   for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
   for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
   dialogoPedidoAbierto.value = true
@@ -367,15 +426,25 @@ function restarCantidad(itemId: number) {
 }
 
 async function enviarPedidoMesero() {
-  if (!mesaPedido.value || itemsSeleccionados.value.length === 0) return
+  if (itemsSeleccionados.value.length === 0) return
+  if (!mesaPedido.value && !canalPedidoExterno.value) return
   enviandoPedido.value = true
   try {
-    await crearPedido(mesaPedido.value.id, itemsSeleccionados.value)
-    ElMessage.success(`Pedido tomado para mesa ${mesaPedido.value.numero}`)
+    if (mesaPedido.value) {
+      await crearPedido(mesaPedido.value.id, itemsSeleccionados.value)
+      ElMessage.success(`Pedido tomado para mesa ${mesaPedido.value.numero}`)
+    } else if (canalPedidoExterno.value && auth.usuario?.restaurante_id) {
+      await crearPedidoDomicilio({
+        restauranteId: auth.usuario.restaurante_id,
+        canal: canalPedidoExterno.value,
+        items: itemsSeleccionados.value,
+      })
+      ElMessage.success(`Pedido de ${canalPedidoExterno.value === 'rappi' ? 'Rappi' : 'Didi'} registrado`)
+    }
     dialogoPedidoAbierto.value = false
     await cargar()
   } catch {
-    ElMessage.error('No se pudo tomar el pedido')
+    ElMessage.error('No se pudo registrar el pedido')
   } finally {
     enviandoPedido.value = false
   }
@@ -416,6 +485,12 @@ onUnmounted(() => clearInterval(intervalo))
           <el-icon :size="16"><Grid /></el-icon>
           <span>Mesas</span>
         </button>
+      </template>
+      <template v-if="vista === 'pedidos'" #accion-principal>
+        <el-button size="default" @click="abrirDialogoPedidoExterno">
+          <el-icon :size="16" style="margin-right: 6px"><Van /></el-icon>
+          Pedido Rappi/Didi
+        </el-button>
       </template>
     </AppTopNav>
 
@@ -490,7 +565,14 @@ onUnmounted(() => clearInterval(intervalo))
               v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && pedido.repartidor_id"
               class="texto-info-pedido"
             >
-              Asignado a {{ pedido.repartidor_nombre }}, esperando que salga
+              Asignado a {{ pedido.repartidor_nombre }}, esperando que salga · cobra
+              ${{ Number(pedido.factura_total).toLocaleString('es-CO') }}
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && !pedido.factura_id"
+              class="pista-accion-mesa"
+            >
+              Tocá el pedido para generar la prefactura
             </p>
             <p
               v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno'"
@@ -528,7 +610,8 @@ onUnmounted(() => clearInterval(intervalo))
               v-else-if="
                 menuPedidoAbierto === pedido.id &&
                 pedido.estado === 'listo' &&
-                pedido.canal === 'domicilio_interno'
+                pedido.canal === 'domicilio_interno' &&
+                pedido.factura_id
               "
               class="menu-acciones-mesa"
               @click.stop="menuPedidoAbierto = null"
@@ -693,6 +776,55 @@ onUnmounted(() => clearInterval(intervalo))
       </template>
     </el-dialog>
 
+    <el-dialog v-model="dialogoPrefacturaAbierto" title="Generar prefactura" width="360px">
+      <p v-if="pedidoAPrefacturar" class="dialogo-mesa">
+        Pedido #{{ pedidoAPrefacturar.id }} · {{ pedidoAPrefacturar.direccion_entrega }}
+      </p>
+      <div class="campo-propina">
+        <span class="campo-label">¿Incluir propina?</span>
+        <el-switch v-model="formPrefactura.incluirPropina" />
+      </div>
+      <div v-if="formPrefactura.incluirPropina" class="campo-propina">
+        <span class="campo-label">Porcentaje</span>
+        <el-input-number v-model="formPrefactura.porcentaje" :min="0" :max="100" />
+      </div>
+      <template #footer>
+        <el-button @click="dialogoPrefacturaAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="generandoPrefactura" @click="confirmarPrefactura">
+          Generar prefactura
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="prefacturaVoucherAbierta" title="Prefactura" width="380px">
+      <div v-if="prefacturaVoucher" class="voucher">
+        <p class="voucher-mesa">Para el repartidor</p>
+        <ul class="voucher-items">
+          <li v-for="item in prefacturaVoucher.items" :key="item.id">
+            <span>{{ item.cantidad }}× {{ item.menu_item_nombre }}</span>
+            <span class="font-mono">${{ (Number(item.precio_unitario) * item.cantidad).toLocaleString('es-CO') }}</span>
+          </li>
+        </ul>
+        <div class="voucher-linea">
+          <span>Subtotal</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.subtotal).toLocaleString('es-CO') }}</span>
+        </div>
+        <div v-if="prefacturaVoucher.incluye_propina" class="voucher-linea">
+          <span>Propina</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.propina).toLocaleString('es-CO') }}</span>
+        </div>
+        <div class="voucher-linea voucher-total">
+          <span>Total a cobrar</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.total).toLocaleString('es-CO') }}</span>
+        </div>
+        <p class="pista-cerrar-menu-mesa">Entregale esto al repartidor junto con el pedido</p>
+      </div>
+      <template #footer>
+        <el-button @click="prefacturaVoucherAbierta = false">Cerrar</el-button>
+        <el-button type="primary" @click="imprimir">Imprimir</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="dialogoOcuparAbierto" title="Ocupar mesa" width="360px">
       <p v-if="mesaAOcupar" class="dialogo-mesa">Mesa {{ mesaAOcupar.numero }}</p>
       <el-input
@@ -714,11 +846,30 @@ onUnmounted(() => clearInterval(intervalo))
         <div class="cabecera-tomar-pedido">
           <span class="icono-tomar-pedido"><el-icon :size="20"><ShoppingBag /></el-icon></span>
           <div>
-            <p class="titulo-tomar-pedido">Tomar pedido</p>
+            <p class="titulo-tomar-pedido">{{ mesaPedido ? 'Tomar pedido' : 'Pedido externo' }}</p>
             <p v-if="mesaPedido" class="subtitulo-tomar-pedido">Mesa {{ mesaPedido.numero }}</p>
           </div>
         </div>
       </template>
+
+      <div v-if="canalPedidoExterno" class="selector-canal-externo">
+        <button
+          type="button"
+          class="opcion-canal-externo"
+          :class="{ 'opcion-canal-externo--activo': canalPedidoExterno === 'rappi' }"
+          @click="canalPedidoExterno = 'rappi'"
+        >
+          Rappi
+        </button>
+        <button
+          type="button"
+          class="opcion-canal-externo"
+          :class="{ 'opcion-canal-externo--activo': canalPedidoExterno === 'didi' }"
+          @click="canalPedidoExterno = 'didi'"
+        >
+          Didi
+        </button>
+      </div>
 
       <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
       <div v-else class="contenedor-menu-pedido">
@@ -1262,6 +1413,29 @@ onUnmounted(() => clearInterval(intervalo))
   color: var(--color-secondary);
   font-weight: 600;
   font-size: 0.875rem;
+}
+
+.selector-canal-externo {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.opcion-canal-externo {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.opcion-canal-externo--activo {
+  border-color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
 }
 
 .contenedor-menu-pedido {

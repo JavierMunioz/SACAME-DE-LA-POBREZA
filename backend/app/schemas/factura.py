@@ -13,11 +13,14 @@ class FacturaCreate(BaseModel):
 
 class FacturaOut(BaseModel):
     id: int
-    mesa_id: int
-    mesa_numero: int
+    mesa_id: int | None
+    mesa_numero: int | None
+    restaurante_id: int
     subtotal: Decimal
     incluye_propina: bool
     propina: Decimal
     total: Decimal
+    pagado: bool
+    pagado_at: datetime | None
     created_at: datetime
     items: list[ItemPedidoOut]

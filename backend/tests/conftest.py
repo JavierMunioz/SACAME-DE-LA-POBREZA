@@ -88,7 +88,11 @@ def restaurante_con_mesa():
         )
         db.query(Pedido).filter(Pedido.id.in_(pedido_ids)).delete(synchronize_session=False)
     db.query(SesionMesa).filter(SesionMesa.mesa_id == mesa.id).delete()
-    db.query(Factura).filter(Factura.mesa_id == mesa.id).delete()
+    # Por mesa_id o restaurante_id: una prefactura de domicilio no tiene
+    # mesa (igual que el pedido que la generó).
+    db.query(Factura).filter(
+        (Factura.mesa_id == mesa.id) | (Factura.restaurante_id == restaurante.id)
+    ).delete(synchronize_session=False)
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
     # Tabla puente ítem-categoría: un DELETE en bloque (Query.delete) no
     # sigue la relación muchos-a-muchos, hay que vaciarla a mano antes de

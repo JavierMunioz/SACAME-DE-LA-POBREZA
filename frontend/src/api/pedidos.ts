@@ -36,6 +36,8 @@ export interface Pedido {
   created_at: string
   confirmado_at: string | null
   factura_id: number | null
+  factura_total: string | null
+  factura_pagado: boolean | null
   items: ItemPedido[]
 }
 
@@ -95,8 +97,8 @@ export async function marcarListo(pedidoId: number): Promise<Pedido> {
   return data
 }
 
-export async function marcarEntregado(pedidoId: number): Promise<Pedido> {
-  const { data } = await api.post<Pedido>(`/pedidos/${pedidoId}/marcar-entregado`)
+export async function marcarEntregado(pedidoId: number, pagado = true): Promise<Pedido> {
+  const { data } = await api.post<Pedido>(`/pedidos/${pedidoId}/marcar-entregado`, { pagado })
   return data
 }
 

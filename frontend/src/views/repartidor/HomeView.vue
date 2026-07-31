@@ -169,11 +169,16 @@ onUnmounted(() => {
             </li>
           </ul>
 
+          <p v-if="pedido.factura_total" class="cobro-entrega">
+            Cobrar contra entrega
+            <span class="font-mono">${{ Number(pedido.factura_total).toLocaleString('es-CO') }}</span>
+          </p>
+
           <p v-if="pedido.estado === 'listo'" class="pista-accion-entrega">
             <el-icon :size="14"><Bell /></el-icon>
             Tocá para marcar en camino
           </p>
-          <p v-else class="pista-accion-entrega">Tocá para marcar entregado</p>
+          <p v-else class="pista-accion-entrega">Tocá para confirmar entrega y cobro</p>
 
           <div
             v-if="menuEntregaAbierta === pedido.id"
@@ -186,7 +191,11 @@ onUnmounted(() => {
               :disabled="procesando === pedido.id"
               @click.stop="completarEntrega(pedido)"
             >
-              Marcar entregado
+              {{
+                pedido.factura_total
+                  ? `Entregado y cobrado ($${Number(pedido.factura_total).toLocaleString('es-CO')})`
+                  : 'Marcar entregado'
+              }}
             </button>
             <p class="pista-cerrar-menu-entrega">Tocá afuera para cancelar</p>
           </div>
@@ -320,6 +329,18 @@ onUnmounted(() => {
 .cantidad-item {
   color: var(--text-tertiary);
   margin-right: var(--space-2);
+}
+
+.cobro-entrega {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .pista-accion-entrega {

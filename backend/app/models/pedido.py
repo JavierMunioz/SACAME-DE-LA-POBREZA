@@ -77,3 +77,4 @@ class Pedido(Base):
     # foreign_keys explícito: usuarios.id ya lo referencian cliente_id y
     # mesero_id, SQLAlchemy no puede inferir solo con repartidor_id.
     repartidor: Mapped["Usuario | None"] = relationship(foreign_keys=[repartidor_id])
+    factura: Mapped["Factura | None"] = relationship(back_populates="pedidos")

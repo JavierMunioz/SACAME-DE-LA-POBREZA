@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from app.core.deps import get_current_user, get_current_user_opcional, require_r
 from app.models import (
     CanalPedido,
     EstadoPedido,
+    Factura,
     ItemPedido,
     MenuItem,
     Mesa,
@@ -18,9 +20,11 @@ from app.models import (
     SesionMesa,
     Usuario,
 )
+from app.schemas.factura import FacturaCreate, FacturaOut
 from app.schemas.pedido import (
     AsignarRepartidor,
     ItemPedidoOut,
+    MarcarEntregadoInput,
     PedidoCreate,
     PedidoOut,
     UbicacionUpdate,
@@ -55,6 +59,8 @@ def _pedido_a_out(pedido: Pedido) -> PedidoOut:
         created_at=pedido.created_at,
         confirmado_at=pedido.confirmado_at,
         factura_id=pedido.factura_id,
+        factura_total=pedido.factura.total if pedido.factura else None,
+        factura_pagado=pedido.factura.pagado if pedido.factura else None,
         items=[
             ItemPedidoOut(
                 id=i.id,
@@ -375,6 +381,82 @@ def marcar_listo(
     return _pedido_a_out(pedido)
 
 
+@router.post(
+    "/{pedido_id}/prefactura", response_model=FacturaOut, status_code=status.HTTP_201_CREATED
+)
+def generar_prefactura(
+    pedido_id: int,
+    datos: FacturaCreate,
+    db: Session = Depends(get_db),
+    staff: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    """Comprobante para el domicilio interno: el mesero la genera antes de
+    asignar repartidor, se la entrega impresa junto con el pedido, el
+    repartidor se la lleva y la cobra contra entrega — recién ahí queda
+    marcada `pagado` (ver `marcar_entregado`). Nace sin pagar, a
+    diferencia de la factura de mesa (esa se asume cobrada al cerrar la
+    mesa). No cierra nada del pedido — el estado sigue su curso normal
+    por cocina/repartidor."""
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, staff.restaurante_id)
+    if pedido.canal != CanalPedido.DOMICILIO_INTERNO:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Solo domicilio interno usa prefactura"
+        )
+    if pedido.estado in (EstadoPedido.CANCELADO, EstadoPedido.ENTREGADO):
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido ya no está activo")
+    if pedido.factura_id is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Este pedido ya tiene prefactura")
+
+    subtotal = sum((i.precio_unitario * i.cantidad for i in pedido.items), Decimal("0"))
+    propina = (
+        (subtotal * datos.porcentaje_propina).quantize(Decimal("0.01"))
+        if datos.incluye_propina
+        else Decimal("0")
+    )
+    total = subtotal + propina
+
+    factura = Factura(
+        mesa_id=None,
+        restaurante_id=pedido.restaurante_id,
+        subtotal=subtotal,
+        incluye_propina=datos.incluye_propina,
+        propina=propina,
+        total=total,
+        pagado=False,
+    )
+    db.add(factura)
+    db.flush()
+    pedido.factura_id = factura.id
+    db.commit()
+    db.refresh(factura)
+
+    items_out = [
+        ItemPedidoOut(
+            id=i.id,
+            menu_item_id=i.menu_item_id,
+            menu_item_nombre=i.menu_item.nombre,
+            cantidad=i.cantidad,
+            precio_unitario=i.precio_unitario,
+            observaciones=i.observaciones,
+        )
+        for i in pedido.items
+    ]
+    return FacturaOut(
+        id=factura.id,
+        mesa_id=None,
+        mesa_numero=None,
+        restaurante_id=factura.restaurante_id,
+        subtotal=factura.subtotal,
+        incluye_propina=factura.incluye_propina,
+        propina=factura.propina,
+        total=factura.total,
+        pagado=factura.pagado,
+        pagado_at=factura.pagado_at,
+        created_at=factura.created_at,
+        items=items_out,
+    )
+
+
 @router.post("/{pedido_id}/asignar-repartidor", response_model=PedidoOut)
 def asignar_repartidor(
     pedido_id: int,
@@ -386,6 +468,11 @@ def asignar_repartidor(
     if pedido.canal != CanalPedido.DOMICILIO_INTERNO:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Solo pedidos de domicilio interno tienen repartidor"
+        )
+    if pedido.factura_id is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Generá la prefactura antes de asignar un repartidor",
         )
     repartidor = db.get(Usuario, datos.repartidor_id)
     if (
@@ -444,6 +531,7 @@ def actualizar_ubicacion(
 @router.post("/{pedido_id}/marcar-entregado", response_model=PedidoOut)
 def marcar_entregado(
     pedido_id: int,
+    datos: MarcarEntregadoInput = MarcarEntregadoInput(),
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(
         require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR)
@@ -453,13 +541,18 @@ def marcar_entregado(
     confirma que ya entregó el domicilio. Separado de `marcar-listo` (que
     es cocina avisando que ya está para servir): solo a partir de acá el
     pedido se puede facturar — no se cobra algo que todavía no llegó a
-    destino (ver Brain.md)."""
+    destino (ver Brain.md). Si el pedido ya tiene prefactura (domicilio
+    interno), entregar también cobra: `pagado` marca la Factura — el
+    repartidor cobra contra entrega, no hay paso de pago aparte."""
     pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, usuario.restaurante_id)
     if usuario.rol == Rol.REPARTIDOR and pedido.repartidor_id != usuario.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Este pedido no está asignado a vos")
     if pedido.estado not in (EstadoPedido.LISTO, EstadoPedido.EN_CAMINO):
         raise HTTPException(status.HTTP_409_CONFLICT, "El pedido todavía no está listo")
     pedido.estado = EstadoPedido.ENTREGADO
+    if pedido.factura is not None:
+        pedido.factura.pagado = datos.pagado
+        pedido.factura.pagado_at = datetime.now(timezone.utc) if datos.pagado else None
     db.commit()
     db.refresh(pedido)
     return _pedido_a_out(pedido)
