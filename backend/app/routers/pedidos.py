@@ -5,18 +5,50 @@ from sqlalchemy.orm import Session
 
 from app.core.carrito_mesa import gestor_carritos
 from app.core.database import get_db
-from app.core.deps import get_current_user_opcional, require_roles
-from app.models import EstadoPedido, ItemPedido, MenuItem, Mesa, Pedido, Rol, SesionMesa, Usuario
-from app.schemas.pedido import ItemPedidoOut, PedidoCreate, PedidoOut
+from app.core.deps import get_current_user, get_current_user_opcional, require_roles
+from app.models import (
+    CanalPedido,
+    EstadoPedido,
+    ItemPedido,
+    MenuItem,
+    Mesa,
+    Pedido,
+    Restaurante,
+    Rol,
+    SesionMesa,
+    Usuario,
+)
+from app.schemas.pedido import (
+    AsignarRepartidor,
+    ItemPedidoOut,
+    PedidoCreate,
+    PedidoOut,
+    UbicacionUpdate,
+)
 
 router = APIRouter(prefix="/pedidos", tags=["pedidos"])
+
+# Solo domicilio_interno se opera de verdad (asignar repartidor, rastrear
+# ubicación). Rappi/Didi no tienen integración real con esas plataformas
+# (piden cuenta de comercio) — el staff solo los registra manualmente
+# para que queden en el reporte, ver Brain.md.
+ROLES_STAFF_RESTAURANTE = (Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR)
 
 
 def _pedido_a_out(pedido: Pedido) -> PedidoOut:
     return PedidoOut(
         id=pedido.id,
         mesa_id=pedido.mesa_id,
-        mesa_numero=pedido.mesa.numero,
+        mesa_numero=pedido.mesa.numero if pedido.mesa else None,
+        restaurante_id=pedido.restaurante_id,
+        canal=pedido.canal,
+        direccion_entrega=pedido.direccion_entrega,
+        telefono_entrega=pedido.telefono_entrega,
+        repartidor_id=pedido.repartidor_id,
+        repartidor_nombre=pedido.repartidor.nombre if pedido.repartidor else None,
+        repartidor_lat=pedido.repartidor_lat,
+        repartidor_lng=pedido.repartidor_lng,
+        repartidor_actualizado_at=pedido.repartidor_actualizado_at,
         cliente_id=pedido.cliente_id,
         nombre_invitado=pedido.nombre_invitado,
         estado=pedido.estado,
@@ -40,13 +72,44 @@ def _pedido_a_out(pedido: Pedido) -> PedidoOut:
 def _get_pedido_del_restaurante_o_404(db: Session, pedido_id: int, restaurante_id: int) -> Pedido:
     pedido = (
         db.query(Pedido)
-        .join(Mesa)
-        .filter(Pedido.id == pedido_id, Mesa.restaurante_id == restaurante_id)
+        .filter(Pedido.id == pedido_id, Pedido.restaurante_id == restaurante_id)
         .first()
     )
     if pedido is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pedido no encontrado")
     return pedido
+
+
+def _validar_items_o_422(db: Session, restaurante_id: int, items: list) -> dict[int, MenuItem]:
+    menu_ids = [item.menu_item_id for item in items]
+    menu_items = (
+        db.query(MenuItem)
+        .filter(MenuItem.id.in_(menu_ids), MenuItem.restaurante_id == restaurante_id)
+        .all()
+    )
+    menu_por_id = {m.id: m for m in menu_items}
+    faltantes = set(menu_ids) - menu_por_id.keys()
+    if faltantes:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
+        )
+    return menu_por_id
+
+
+def _agregar_items(db: Session, pedido: Pedido, items: list, menu_por_id: dict[int, MenuItem]) -> None:
+    for item in items:
+        menu_item = menu_por_id[item.menu_item_id]
+        db.add(
+            ItemPedido(
+                pedido_id=pedido.id,
+                menu_item_id=menu_item.id,
+                cantidad=item.cantidad,
+                # Precio congelado al momento del pedido, no sigue al menú.
+                precio_unitario=menu_item.precio,
+                observaciones=item.observaciones,
+            )
+        )
 
 
 @router.post("", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
@@ -55,6 +118,12 @@ async def crear_pedido(
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_current_user_opcional),
 ):
+    if not datos.items:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
+
+    if datos.canal != CanalPedido.MESA:
+        return await _crear_pedido_domicilio(datos, db, usuario)
+
     # Sin cuenta también se puede pedir (ver Readme: mesa libre sin reserva
     # se puede usar sin fricción). Mesero/admin_restaurante también pueden
     # pedir directo por la mesa (ver Brain.md: cliente sentado sin forma
@@ -63,45 +132,22 @@ async def crear_pedido(
     if usuario is not None and usuario.rol not in (Rol.CLIENTE, *ROLES_STAFF_PEDIDO):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta acción")
 
-    mesa = db.get(Mesa, datos.mesa_id)
+    mesa = db.get(Mesa, datos.mesa_id) if datos.mesa_id is not None else None
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
-    if not datos.items:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El pedido no tiene items")
 
     if usuario is not None and usuario.rol in ROLES_STAFF_PEDIDO:
         if mesa.restaurante_id != usuario.restaurante_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso sobre esta mesa")
         pedido = Pedido(
             mesa_id=mesa.id,
+            restaurante_id=mesa.restaurante_id,
             nombre_invitado=f"Tomado por {usuario.nombre}",
         )
         db.add(pedido)
         db.flush()
-        menu_ids = [item.menu_item_id for item in datos.items]
-        menu_items = (
-            db.query(MenuItem)
-            .filter(MenuItem.id.in_(menu_ids), MenuItem.restaurante_id == mesa.restaurante_id)
-            .all()
-        )
-        menu_por_id = {m.id: m for m in menu_items}
-        faltantes = set(menu_ids) - menu_por_id.keys()
-        if faltantes:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
-            )
-        for item in datos.items:
-            menu_item = menu_por_id[item.menu_item_id]
-            db.add(
-                ItemPedido(
-                    pedido_id=pedido.id,
-                    menu_item_id=menu_item.id,
-                    cantidad=item.cantidad,
-                    precio_unitario=menu_item.precio,
-                    observaciones=item.observaciones,
-                )
-            )
+        menu_por_id = _validar_items_o_422(db, mesa.restaurante_id, datos.items)
+        _agregar_items(db, pedido, datos.items, menu_por_id)
         db.commit()
         db.refresh(pedido)
         return _pedido_a_out(pedido)
@@ -137,22 +183,11 @@ async def crear_pedido(
             "Necesitás abrir o unirte a la mesa antes de pedir (escaneá el QR)",
         )
 
-    menu_ids = [item.menu_item_id for item in datos.items]
-    menu_items = (
-        db.query(MenuItem)
-        .filter(MenuItem.id.in_(menu_ids), MenuItem.restaurante_id == mesa.restaurante_id)
-        .all()
-    )
-    menu_por_id = {m.id: m for m in menu_items}
-    faltantes = set(menu_ids) - menu_por_id.keys()
-    if faltantes:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Ítems de menú inválidos para este restaurante: {sorted(faltantes)}",
-        )
+    menu_por_id = _validar_items_o_422(db, mesa.restaurante_id, datos.items)
 
     pedido = Pedido(
         mesa_id=mesa.id,
+        restaurante_id=mesa.restaurante_id,
         cliente_id=usuario.id if usuario else None,
         sesion_mesa_id=sesion.id if sesion else None,
         nombre_invitado=nombre_invitado,
@@ -160,18 +195,7 @@ async def crear_pedido(
     db.add(pedido)
     db.flush()
 
-    for item in datos.items:
-        menu_item = menu_por_id[item.menu_item_id]
-        db.add(
-            ItemPedido(
-                pedido_id=pedido.id,
-                menu_item_id=menu_item.id,
-                cantidad=item.cantidad,
-                # Precio congelado al momento del pedido, no sigue al menú.
-                precio_unitario=menu_item.precio,
-                observaciones=item.observaciones,
-            )
-        )
+    _agregar_items(db, pedido, datos.items, menu_por_id)
 
     db.commit()
     db.refresh(pedido)
@@ -182,18 +206,97 @@ async def crear_pedido(
     return _pedido_a_out(pedido)
 
 
+async def _crear_pedido_domicilio(
+    datos: PedidoCreate, db: Session, usuario: Usuario | None
+) -> PedidoOut:
+    restaurante = db.get(Restaurante, datos.restaurante_id)
+    if restaurante is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Restaurante no encontrado")
+
+    if datos.canal == CanalPedido.DOMICILIO_INTERNO:
+        # El cliente pide desde su cuenta, o el mesero/admin lo carga a
+        # mano (pedido tomado por teléfono).
+        if usuario is None:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Necesitás iniciar sesión para pedir domicilio"
+            )
+        if usuario.rol not in (Rol.CLIENTE, Rol.MESERO, Rol.ADMIN_RESTAURANTE):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta acción")
+    else:
+        # Rappi/Didi: no hay integración real con esas plataformas (ver
+        # Brain.md) — solo el staff registra que el pedido salió por ahí.
+        if usuario is None or usuario.rol not in (Rol.MESERO, Rol.ADMIN_RESTAURANTE):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Solo el staff puede registrar este canal"
+            )
+
+    if usuario.rol in (Rol.MESERO, Rol.ADMIN_RESTAURANTE) and usuario.restaurante_id != restaurante.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso sobre este restaurante")
+
+    menu_por_id = _validar_items_o_422(db, restaurante.id, datos.items)
+
+    es_cliente = usuario.rol == Rol.CLIENTE
+    pedido = Pedido(
+        mesa_id=None,
+        restaurante_id=restaurante.id,
+        canal=datos.canal,
+        direccion_entrega=datos.direccion_entrega,
+        telefono_entrega=datos.telefono_entrega,
+        cliente_id=usuario.id if es_cliente else None,
+        nombre_invitado=None if es_cliente else f"Tomado por {usuario.nombre}",
+    )
+    db.add(pedido)
+    db.flush()
+
+    _agregar_items(db, pedido, datos.items, menu_por_id)
+
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.get("/{pedido_id}", response_model=PedidoOut)
+def obtener_pedido(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    """Para el cliente hacer seguimiento (polling) de su propio pedido de
+    domicilio, además de lo que ya cubre `listar_pedidos` para el staff."""
+    pedido = db.get(Pedido, pedido_id)
+    if pedido is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pedido no encontrado")
+    es_dueno = pedido.cliente_id == usuario.id
+    es_staff_restaurante = (
+        usuario.rol in ROLES_STAFF_RESTAURANTE and usuario.restaurante_id == pedido.restaurante_id
+    )
+    if not (es_dueno or es_staff_restaurante):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para ver este pedido")
+    return _pedido_a_out(pedido)
+
+
 # Rango de estados que le pertenece ver a cocina: desde que el mesero
 # confirma hasta que el plato queda listo para servir.
 ESTADOS_COCINA = (EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO)
+# Cola activa de un repartidor: ya salió de cocina, listo para salir o ya
+# en camino. Entregado/cancelado no le sirven de default.
+ESTADOS_REPARTIDOR = (EstadoPedido.LISTO, EstadoPedido.EN_CAMINO)
 
 
 @router.get("", response_model=list[PedidoOut])
 def listar_pedidos(
     estado: EstadoPedido | None = None,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE)),
+    usuario: Usuario = Depends(
+        require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR)
+    ),
 ):
-    query = db.query(Pedido).join(Mesa).filter(Mesa.restaurante_id == usuario.restaurante_id)
+    query = db.query(Pedido).filter(Pedido.restaurante_id == usuario.restaurante_id)
+
+    if usuario.rol == Rol.REPARTIDOR:
+        # Un repartidor solo ve sus propias entregas asignadas, nunca las
+        # de otro compañero.
+        query = query.filter(Pedido.repartidor_id == usuario.id)
 
     if estado is not None:
         query = query.filter(Pedido.estado == estado)
@@ -203,6 +306,9 @@ def listar_pedidos(
         # un único estado puntual. Orden FIFO por hora de llegada a cocina
         # (confirmado_at), no por hora de creación del pedido.
         query = query.filter(Pedido.estado.in_(ESTADOS_COCINA))
+        orden = Pedido.confirmado_at
+    elif usuario.rol == Rol.REPARTIDOR:
+        query = query.filter(Pedido.estado.in_(ESTADOS_REPARTIDOR))
         orden = Pedido.confirmado_at
     else:
         orden = Pedido.created_at
@@ -257,18 +363,89 @@ def marcar_listo(
     return _pedido_a_out(pedido)
 
 
+@router.post("/{pedido_id}/asignar-repartidor", response_model=PedidoOut)
+def asignar_repartidor(
+    pedido_id: int,
+    datos: AsignarRepartidor,
+    db: Session = Depends(get_db),
+    staff: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, staff.restaurante_id)
+    if pedido.canal != CanalPedido.DOMICILIO_INTERNO:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Solo pedidos de domicilio interno tienen repartidor"
+        )
+    repartidor = db.get(Usuario, datos.repartidor_id)
+    if (
+        repartidor is None
+        or repartidor.rol != Rol.REPARTIDOR
+        or repartidor.restaurante_id != staff.restaurante_id
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Repartidor no encontrado")
+    pedido.repartidor_id = repartidor.id
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.post("/{pedido_id}/marcar-en-camino", response_model=PedidoOut)
+def marcar_en_camino(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(
+        require_roles(Rol.REPARTIDOR, Rol.MESERO, Rol.ADMIN_RESTAURANTE)
+    ),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, usuario.restaurante_id)
+    if usuario.rol == Rol.REPARTIDOR and pedido.repartidor_id != usuario.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Este pedido no está asignado a vos")
+    if pedido.repartidor_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido todavía no tiene repartidor asignado")
+    if pedido.estado != EstadoPedido.LISTO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido todavía no está listo")
+    pedido.estado = EstadoPedido.EN_CAMINO
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
+@router.patch("/{pedido_id}/ubicacion", response_model=PedidoOut)
+def actualizar_ubicacion(
+    pedido_id: int,
+    datos: UbicacionUpdate,
+    db: Session = Depends(get_db),
+    repartidor: Usuario = Depends(require_roles(Rol.REPARTIDOR)),
+):
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, repartidor.restaurante_id)
+    if pedido.repartidor_id != repartidor.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Este pedido no está asignado a vos")
+    if pedido.estado != EstadoPedido.EN_CAMINO:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El pedido no está en camino")
+    pedido.repartidor_lat = datos.lat
+    pedido.repartidor_lng = datos.lng
+    pedido.repartidor_actualizado_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(pedido)
+    return _pedido_a_out(pedido)
+
+
 @router.post("/{pedido_id}/marcar-entregado", response_model=PedidoOut)
 def marcar_entregado(
     pedido_id: int,
     db: Session = Depends(get_db),
-    mesero: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+    usuario: Usuario = Depends(
+        require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR)
+    ),
 ):
-    """El mesero confirma que ya llevó el plato a la mesa. Separado de
-    `marcar-listo` (que es cocina avisando que ya está para servir): solo
-    a partir de acá el pedido se puede facturar — no se cobra algo que
-    todavía no llegó a la mesa (ver Brain.md)."""
-    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, mesero.restaurante_id)
-    if pedido.estado != EstadoPedido.LISTO:
+    """El mesero confirma que ya llevó el plato a la mesa, o el repartidor
+    confirma que ya entregó el domicilio. Separado de `marcar-listo` (que
+    es cocina avisando que ya está para servir): solo a partir de acá el
+    pedido se puede facturar — no se cobra algo que todavía no llegó a
+    destino (ver Brain.md)."""
+    pedido = _get_pedido_del_restaurante_o_404(db, pedido_id, usuario.restaurante_id)
+    if usuario.rol == Rol.REPARTIDOR and pedido.repartidor_id != usuario.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Este pedido no está asignado a vos")
+    if pedido.estado not in (EstadoPedido.LISTO, EstadoPedido.EN_CAMINO):
         raise HTTPException(status.HTTP_409_CONFLICT, "El pedido todavía no está listo")
     pedido.estado = EstadoPedido.ENTREGADO
     db.commit()

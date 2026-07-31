@@ -181,7 +181,7 @@ export function urlImagenQr(mesaId: number): string {
   return `${api.defaults.baseURL}/mesas/${mesaId}/qr.png`
 }
 
-export type RolPersonal = 'mesero' | 'cocina' | 'admin_restaurante'
+export type RolPersonal = 'mesero' | 'cocina' | 'admin_restaurante' | 'repartidor'
 
 export interface Personal {
   id: number

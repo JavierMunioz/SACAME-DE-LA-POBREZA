@@ -2,12 +2,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { obtenerRestaurante, type RestauranteConMenu } from '../../api/restaurantes'
+import { Minus, Plus, Van } from '@element-plus/icons-vue'
+import { obtenerRestaurante, type MenuItem, type RestauranteConMenu } from '../../api/restaurantes'
 import {
   consultarDisponibilidad,
   crearReserva,
   type MesaDisponibilidad,
 } from '../../api/reservas'
+import { crearPedidoDomicilio } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
 import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
@@ -39,6 +41,78 @@ const mesasFiltradas = computed(() =>
 const gruposMenu = computed(() =>
   restaurante.value ? agruparMenuPorCategoria(restaurante.value.menu) : [],
 )
+
+// Carrito de domicilio: menu_item_id -> cantidad. Vive solo en memoria,
+// nada compartido en vivo (a diferencia del carrito de mesa, acá pide
+// una sola persona, no hace falta websocket).
+const carritoDomicilio = reactive<Record<number, number>>({})
+
+const itemsCarrito = computed(() =>
+  Object.entries(carritoDomicilio)
+    .filter(([, cantidad]) => cantidad > 0)
+    .map(([id, cantidad]) => {
+      const item = restaurante.value?.menu.find((m) => m.id === Number(id))
+      return item ? { item, cantidad } : null
+    })
+    .filter((x): x is { item: MenuItem; cantidad: number } => x !== null),
+)
+
+const totalItemsCarrito = computed(() =>
+  itemsCarrito.value.reduce((acc, x) => acc + x.cantidad, 0),
+)
+
+const totalPrecioCarrito = computed(() =>
+  itemsCarrito.value.reduce((acc, x) => acc + Number(x.item.precio) * x.cantidad, 0),
+)
+
+function agregarAlCarrito(itemId: number) {
+  if (!auth.token) {
+    router.push(`/login?redirect=${encodeURIComponent(route.fullPath)}`)
+    return
+  }
+  carritoDomicilio[itemId] = (carritoDomicilio[itemId] ?? 0) + 1
+}
+
+function quitarDelCarrito(itemId: number) {
+  carritoDomicilio[itemId] = Math.max(0, (carritoDomicilio[itemId] ?? 0) - 1)
+}
+
+const dialogoDomicilioAbierto = ref(false)
+const enviandoDomicilio = ref(false)
+const formDomicilio = reactive({ direccion: '', telefono: '' })
+
+function abrirCheckoutDomicilio() {
+  if (!auth.token) {
+    router.push(`/login?redirect=${encodeURIComponent(route.fullPath)}`)
+    return
+  }
+  dialogoDomicilioAbierto.value = true
+}
+
+async function confirmarPedidoDomicilio() {
+  if (!formDomicilio.direccion.trim()) {
+    ElMessage.warning('La dirección de entrega es obligatoria')
+    return
+  }
+  enviandoDomicilio.value = true
+  try {
+    const pedido = await crearPedidoDomicilio({
+      restauranteId: restauranteId,
+      canal: 'domicilio_interno',
+      direccionEntrega: formDomicilio.direccion,
+      telefonoEntrega: formDomicilio.telefono || undefined,
+      items: itemsCarrito.value.map((x) => ({ menu_item_id: x.item.id, cantidad: x.cantidad })),
+    })
+    dialogoDomicilioAbierto.value = false
+    Object.keys(carritoDomicilio).forEach((k) => delete carritoDomicilio[Number(k)])
+    ElMessage.success('Pedido enviado, te avisamos cuando salga')
+    router.push(`/cliente/pedidos/${pedido.id}/seguimiento`)
+  } catch {
+    ElMessage.error('No se pudo enviar el pedido')
+  } finally {
+    enviandoDomicilio.value = false
+  }
+}
 
 async function cargar() {
   cargando.value = true
@@ -137,6 +211,10 @@ onMounted(async () => {
           <div class="hero-restaurante-acciones">
             <el-button type="primary" size="large" @click="irAReservar">Reservar mesa</el-button>
             <el-button size="large" class="boton-outline-claro" @click="irAMenu">Ver menú</el-button>
+            <el-button size="large" class="boton-outline-claro" @click="irAMenu">
+              <el-icon :size="16" style="margin-right: 6px"><Van /></el-icon>
+              Pedir domicilio
+            </el-button>
           </div>
         </div>
       </div>
@@ -156,7 +234,25 @@ onMounted(async () => {
                   <div class="info-plato">
                     <p class="nombre-plato">{{ item.nombre }}</p>
                     <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
-                    <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+                    <div class="fila-precio-agregar">
+                      <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+                      <div class="stepper-plato">
+                        <button
+                          v-if="carritoDomicilio[item.id]"
+                          type="button"
+                          class="boton-stepper"
+                          @click="quitarDelCarrito(item.id)"
+                        >
+                          <el-icon :size="14"><Minus /></el-icon>
+                        </button>
+                        <span v-if="carritoDomicilio[item.id]" class="cantidad-stepper">
+                          {{ carritoDomicilio[item.id] }}
+                        </span>
+                        <button type="button" class="boton-stepper" @click="agregarAlCarrito(item.id)">
+                          <el-icon :size="14"><Plus /></el-icon>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </li>
               </ul>
@@ -230,6 +326,44 @@ onMounted(async () => {
         </aside>
       </div>
     </main>
+
+    <div v-if="totalItemsCarrito > 0" class="barra-carrito">
+      <div class="barra-carrito-info">
+        <el-icon :size="18"><Van /></el-icon>
+        <span>{{ totalItemsCarrito }} {{ totalItemsCarrito === 1 ? 'ítem' : 'ítems' }}</span>
+        <span class="barra-carrito-total">${{ totalPrecioCarrito.toLocaleString('es-CO') }}</span>
+      </div>
+      <el-button type="primary" size="large" @click="abrirCheckoutDomicilio">
+        Pedir domicilio
+      </el-button>
+    </div>
+
+    <el-dialog v-model="dialogoDomicilioAbierto" title="Confirmar domicilio" width="420px">
+      <div class="resumen-carrito">
+        <div v-for="x in itemsCarrito" :key="x.item.id" class="fila-resumen-carrito">
+          <span>{{ x.cantidad }}× {{ x.item.nombre }}</span>
+          <span>${{ (Number(x.item.precio) * x.cantidad).toLocaleString('es-CO') }}</span>
+        </div>
+        <div class="fila-resumen-carrito fila-resumen-total">
+          <span>Total</span>
+          <span>${{ totalPrecioCarrito.toLocaleString('es-CO') }}</span>
+        </div>
+      </div>
+      <el-form :model="formDomicilio" label-position="top">
+        <el-form-item label="Dirección de entrega">
+          <el-input v-model="formDomicilio.direccion" size="large" placeholder="Calle, número, barrio" />
+        </el-form-item>
+        <el-form-item label="Teléfono de contacto (opcional)">
+          <el-input v-model="formDomicilio.telefono" size="large" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoDomicilioAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="enviandoDomicilio" @click="confirmarPedidoDomicilio">
+          Confirmar pedido
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -395,10 +529,98 @@ onMounted(async () => {
   font-size: 0.85rem;
 }
 
+.fila-precio-agregar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .precio {
   color: var(--color-secondary);
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.stepper-plato {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.boton-stepper {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  color: var(--color-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.boton-stepper:hover {
+  background: var(--color-secondary-soft);
+}
+
+.cantidad-stepper {
+  min-width: 1.2em;
+  text-align: center;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.barra-carrito {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary);
+  color: white;
+  box-shadow: var(--shadow-lg);
+}
+
+.barra-carrito-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.barra-carrito-total {
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.resumen-carrito {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fila-resumen-carrito {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.9rem;
+}
+
+.fila-resumen-total {
+  font-weight: 700;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-default);
 }
 
 .columna-reserva {

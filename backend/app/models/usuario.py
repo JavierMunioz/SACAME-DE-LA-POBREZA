@@ -13,6 +13,7 @@ class Rol(str, enum.Enum):
     CLIENTE = "cliente"
     MESERO = "mesero"
     COCINA = "cocina"
+    REPARTIDOR = "repartidor"
 
 
 class Usuario(Base):

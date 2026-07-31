@@ -275,9 +275,13 @@ onMounted(cargar)
 }
 
 .menu-item-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
+}
+
+.menu-item-row .el-input {
+  flex: 1 1 140px;
 }
 </style>

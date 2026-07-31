@@ -303,6 +303,7 @@ const etiquetaRol: Record<RolPersonal, string> = {
   mesero: 'Mesero',
   cocina: 'Cocina',
   admin_restaurante: 'Admin de restaurante',
+  repartidor: 'Repartidor',
 }
 
 async function guardarMesa() {
@@ -658,6 +659,7 @@ onUnmounted(() => {
           <el-select v-model="formPersonal.rol" style="width: 100%">
             <el-option label="Mesero" value="mesero" />
             <el-option label="Cocina" value="cocina" />
+            <el-option label="Repartidor" value="repartidor" />
             <el-option label="Admin de restaurante" value="admin_restaurante" />
           </el-select>
         </el-form-item>
@@ -690,6 +692,7 @@ onUnmounted(() => {
 
 .hero-restaurante {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--space-4);
@@ -740,8 +743,10 @@ onUnmounted(() => {
 
 .encabezado-seccion {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
@@ -885,43 +890,36 @@ onUnmounted(() => {
 }
 
 /* ---- Dashboard: capacidad / revenue / hot items ---- */
-/* Bento real: 3 métricas → 3 celdas (1 grande + 2 apiladas), no tres
-   tarjetas idénticas en fila. La celda con más contenido (la lista de
-   platos) se lleva el espacio grande. */
+/* Mobile-first: base = todo apilado en una columna, legible en celular.
+   Bento real (1 celda grande + 2 apiladas) recién a partir de pantalla
+   ancha — la celda con más contenido (la lista de platos) se lleva el
+   espacio grande. */
 .grid-dashboard {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-5);
   margin-bottom: var(--space-10);
 }
 
-.celda-hot-items {
-  grid-column: 1;
-  grid-row: 1 / 3;
-}
-
-.celda-capacidad {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.celda-revenue {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-@media (max-width: 860px) {
+@media (min-width: 861px) {
   .grid-dashboard {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-rows: 1fr 1fr;
   }
 
-  .celda-hot-items,
-  .celda-capacidad,
-  .celda-revenue {
+  .celda-hot-items {
     grid-column: 1;
-    grid-row: auto;
+    grid-row: 1 / 3;
+  }
+
+  .celda-capacidad {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .celda-revenue {
+    grid-column: 2;
+    grid-row: 2;
   }
 }
 

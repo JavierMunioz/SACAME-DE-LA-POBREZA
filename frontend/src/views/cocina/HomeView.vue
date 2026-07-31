@@ -47,6 +47,12 @@ function urgencia(pedido: Pedido): 'normal' | 'atencion' | 'urgente' {
   return 'normal'
 }
 
+const etiquetaCanal: Record<string, string> = {
+  domicilio_interno: 'Domicilio',
+  rappi: 'Rappi',
+  didi: 'Didi',
+}
+
 const ordenesAtrasadas = computed(
   () => pedidos.value.filter((p) => p.estado !== 'listo' && minutosEnEspera(p) >= 20).length,
 )
@@ -103,7 +109,10 @@ onUnmounted(() => {
         <div class="marca-icono">
           <el-icon :size="18"><KnifeFork /></el-icon>
         </div>
-        <h1>Sacame de la Pobreza <span class="marca-acento">Cocina</span></h1>
+        <h1>
+          <span class="marca-texto-completo">Sacame de la Pobreza </span>
+          <span class="marca-acento">Cocina</span>
+        </h1>
         <div class="separador" />
         <div class="reloj">
           <span class="font-mono">{{ horaActual }}</span>
@@ -112,7 +121,7 @@ onUnmounted(() => {
       <div class="encabezado-der">
         <span class="indicador-activo">
           <span class="punto-verde" />
-          Sistema Operativo
+          <span class="indicador-texto">Sistema Operativo</span>
         </span>
         <button type="button" class="boton-icono" @click="cerrarSesion">
           <el-icon :size="18"><SwitchButton /></el-icon>
@@ -140,7 +149,12 @@ onUnmounted(() => {
           <div class="cabecera-comanda">
             <div>
               <h2 class="orden">Orden #{{ pedido.id }}</h2>
-              <p class="mesa">Mesa {{ pedido.mesa_numero }}</p>
+              <p class="mesa">
+                {{ pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero}` : 'Domicilio' }}
+                <span v-if="pedido.canal !== 'mesa'" class="badge-canal-cocina">
+                  {{ etiquetaCanal[pedido.canal] }}
+                </span>
+              </p>
             </div>
             <div class="tiempo" :class="`tiempo--${urgencia(pedido)}`">
               <el-icon v-if="urgencia(pedido) === 'urgente'" :size="16"><Warning /></el-icon>
@@ -212,20 +226,45 @@ onUnmounted(() => {
 
 .encabezado {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 0 var(--gutter);
-  height: 64px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  min-height: 64px;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
 }
 
+@media (min-width: 640px) {
+  .encabezado {
+    padding: 0 var(--gutter);
+  }
+}
+
 .encabezado-izq {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .encabezado-izq {
+    gap: var(--space-4);
+  }
+}
+
+.marca-texto-completo {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .marca-texto-completo {
+    display: inline;
+  }
 }
 
 .marca-icono {
@@ -252,6 +291,14 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background: var(--border-subtle);
+  flex-shrink: 0;
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .separador {
+    display: block;
+  }
 }
 
 .reloj {
@@ -262,12 +309,20 @@ onUnmounted(() => {
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .encabezado-der {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .encabezado-der {
+    gap: var(--space-4);
+  }
 }
 
 .indicador-activo {
@@ -276,6 +331,16 @@ onUnmounted(() => {
   gap: var(--space-2);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.indicador-texto {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .indicador-texto {
+    display: inline;
+  }
 }
 
 .punto-verde {
@@ -310,8 +375,14 @@ onUnmounted(() => {
 
 .grid-comandas {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-5);
+}
+
+@media (min-width: 480px) {
+  .grid-comandas {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
 }
 
 .tarjeta-skeleton {
@@ -381,6 +452,18 @@ onUnmounted(() => {
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.badge-canal-cocina {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  margin-left: var(--space-2);
 }
 
 .tiempo {
@@ -502,20 +585,36 @@ onUnmounted(() => {
 }
 
 .pie {
-  height: 48px;
+  min-height: 48px;
   flex-shrink: 0;
   background: var(--color-primary);
   color: white;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--gutter);
-  font-size: 0.875rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 640px) {
+  .pie {
+    padding: 0 var(--gutter);
+    font-size: 0.875rem;
+  }
 }
 
 .pie-contadores {
   display: flex;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (min-width: 640px) {
+  .pie-contadores {
+    gap: var(--space-6);
+  }
 }
 
 .pie-item {

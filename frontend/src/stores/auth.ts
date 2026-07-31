@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 
-export type Rol = 'admin_general' | 'admin_restaurante' | 'cliente' | 'mesero' | 'cocina'
+export type Rol = 'admin_general' | 'admin_restaurante' | 'cliente' | 'mesero' | 'cocina' | 'repartidor'
 
 interface Usuario {
   id: number
@@ -27,6 +27,7 @@ export function homeDeUsuario(usuario: Usuario): string {
     cliente: '/cliente',
     mesero: '/mesero',
     cocina: '/cocina',
+    repartidor: '/repartidor',
   }
   return home[usuario.rol]
 }

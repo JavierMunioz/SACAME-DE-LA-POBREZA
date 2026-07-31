@@ -67,10 +67,51 @@ const pedidosActivos = computed(() =>
 const mesasParaCerrar = computed(() => {
   const vistas = new Map<number, number>()
   for (const p of pedidos.value) {
-    if (p.estado === 'entregado' && p.factura_id === null) vistas.set(p.mesa_id, p.mesa_numero)
+    // Domicilio no tiene mesa (mesa_id null) — no entra en esta lista,
+    // la facturación por mesa no le aplica.
+    if (p.estado === 'entregado' && p.factura_id === null && p.mesa_id !== null) {
+      vistas.set(p.mesa_id, p.mesa_numero as number)
+    }
   }
   return [...vistas.entries()].map(([mesa_id, mesa_numero]) => ({ mesa_id, mesa_numero }))
 })
+
+const etiquetaCanal: Record<string, string> = {
+  domicilio_interno: 'Domicilio',
+  rappi: 'Rappi',
+  didi: 'Didi',
+}
+
+const repartidoresDisponibles = ref<{ id: number; nombre: string }[]>([])
+const repartidorSeleccionado = reactive<Record<number, number | undefined>>({})
+
+async function cargarRepartidores() {
+  if (!auth.usuario?.restaurante_id) return
+  const { listarPersonal } = await import('../../api/restaurantes')
+  const personal = await listarPersonal(auth.usuario.restaurante_id)
+  repartidoresDisponibles.value = personal
+    .filter((p) => p.rol === 'repartidor')
+    .map((p) => ({ id: p.id, nombre: p.nombre }))
+}
+
+async function asignarRepartidorAPedido(pedido: Pedido) {
+  const repartidorId = repartidorSeleccionado[pedido.id]
+  if (!repartidorId) {
+    ElMessage.warning('Elegí un repartidor')
+    return
+  }
+  procesando.value = pedido.id
+  try {
+    const { asignarRepartidor } = await import('../../api/pedidos')
+    await asignarRepartidor(pedido.id, repartidorId)
+    ElMessage.success('Repartidor asignado')
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo asignar el repartidor')
+  } finally {
+    procesando.value = null
+  }
+}
 
 const etiquetaEstado: Record<string, string> = {
   pendiente: 'Pendiente',
@@ -315,6 +356,7 @@ async function enviarPedidoMesero() {
 onMounted(() => {
   cargar()
   cargarMesas()
+  cargarRepartidores()
   intervalo = setInterval(() => {
     cargar()
     if (vista.value === 'mesas') cargarMesas()
@@ -387,11 +429,21 @@ onUnmounted(() => clearInterval(intervalo))
             :class="`tarjeta-pedido--${pedido.estado}`"
           >
             <div class="cabecera-pedido">
-              <span class="mesa">Mesa {{ pedido.mesa_numero }}</span>
+              <span class="grupo-mesa">
+                <span class="mesa">
+                  {{ pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero}` : 'Domicilio' }}
+                </span>
+                <span v-if="pedido.canal !== 'mesa'" class="badge-canal">
+                  {{ etiquetaCanal[pedido.canal] }}
+                </span>
+              </span>
               <span class="badge-estado" :class="`badge-estado--${pedido.estado}`">
                 {{ etiquetaEstado[pedido.estado] }}
               </span>
             </div>
+            <p v-if="pedido.direccion_entrega" class="nombre-invitado">
+              {{ pedido.direccion_entrega }}<span v-if="pedido.telefono_entrega"> · {{ pedido.telefono_entrega }}</span>
+            </p>
             <p v-if="pedido.nombre_invitado" class="nombre-invitado">
               Pidió: {{ pedido.nombre_invitado }} <span class="chip-invitado-pedido">invitado</span>
             </p>
@@ -420,6 +472,38 @@ onUnmounted(() => clearInterval(intervalo))
               >
                 Confirmar
               </el-button>
+            </div>
+            <div
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno'"
+              class="acciones-pedido acciones-pedido--domicilio"
+            >
+              <template v-if="!pedido.repartidor_id">
+                <el-select
+                  v-model="repartidorSeleccionado[pedido.id]"
+                  placeholder="Elegí repartidor"
+                  size="large"
+                  class="select-repartidor"
+                >
+                  <el-option
+                    v-for="r in repartidoresDisponibles"
+                    :key="r.id"
+                    :label="r.nombre"
+                    :value="r.id"
+                  />
+                </el-select>
+                <el-button
+                  type="primary"
+                  size="large"
+                  :loading="procesando === pedido.id"
+                  class="boton-accion"
+                  @click="asignarRepartidorAPedido(pedido)"
+                >
+                  Asignar
+                </el-button>
+              </template>
+              <p v-else class="texto-info-pedido">
+                Asignado a {{ pedido.repartidor_nombre }}, esperando que salga
+              </p>
             </div>
             <div v-else-if="pedido.estado === 'listo'" class="acciones-pedido">
               <el-button
@@ -772,15 +856,36 @@ onUnmounted(() => clearInterval(intervalo))
 
 .cabecera-pedido {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+.grupo-mesa {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .mesa {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.1rem;
+}
+
+.badge-canal {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
 }
 
 .badge-estado {
@@ -857,7 +962,23 @@ onUnmounted(() => clearInterval(intervalo))
 
 .acciones-pedido {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+.acciones-pedido--domicilio {
+  align-items: center;
+}
+
+.select-repartidor {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.texto-info-pedido {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .boton-accion {

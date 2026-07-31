@@ -163,6 +163,8 @@ h3 { font-size: 1.125rem; line-height: 1.625rem; }
   color: var(--text-secondary);
   font-size: 0.8125rem;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: none;
   border: none;
   cursor: pointer;
@@ -263,6 +265,19 @@ button:active, .el-button:active { transform: scale(0.98); }
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
+}
+
+/* Mobile-first: cada .el-dialog en la app pasa un `width` fijo en px
+   (ej. 380px) pensado para pantalla ancha — Element Plus lo aplica
+   como inline style y no lo achica solo en un celular angosto. Esta
+   regla lo pisa con !important por debajo de 480px para que ningún
+   diálogo desborde, sin tener que tocar cada uno por separado. */
+@media (max-width: 480px) {
+  .el-dialog {
+    width: 92vw !important;
+    max-width: 92vw;
+    margin: 5vh auto !important;
+  }
 }
 
 .el-input__wrapper,

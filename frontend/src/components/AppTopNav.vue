@@ -28,23 +28,33 @@ const emit = defineEmits<{ salir: [] }>()
       <slot name="accion-principal" />
       <button type="button" class="topnav-salir" @click="emit('salir')">
         <el-icon :size="16"><SwitchButton /></el-icon>
-        <span>Salir</span>
+        <span class="topnav-salir-texto">Salir</span>
       </button>
     </div>
   </header>
 </template>
 
 <style scoped>
+/* Mobile-first: base = compacto (gap chico, padding chico, cabe en
+   celular angosto sin desbordar). Se agranda recién a partir de 640px. */
 .topnav {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-3) var(--space-6);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
   z-index: 20;
+  overflow-x: auto;
+}
+
+@media (min-width: 640px) {
+  .topnav {
+    gap: var(--space-6);
+    padding: var(--space-3) var(--space-6);
+  }
 }
 
 .topnav-marca {
@@ -93,6 +103,7 @@ const emit = defineEmits<{ salir: [] }>()
   align-items: center;
   gap: var(--space-2);
   flex: 1;
+  min-width: 0;
 }
 
 .topnav-acciones {
@@ -114,7 +125,18 @@ const emit = defineEmits<{ salir: [] }>()
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
+  flex-shrink: 0;
   transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.topnav-salir-texto {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .topnav-salir-texto {
+    display: inline;
+  }
 }
 
 .topnav-salir:hover {

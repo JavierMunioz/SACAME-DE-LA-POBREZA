@@ -51,6 +51,12 @@ const router = createRouter({
       meta: { rol: 'cocina' as Rol },
     },
     {
+      path: '/repartidor',
+      name: 'repartidor',
+      component: () => import('../views/repartidor/HomeView.vue'),
+      meta: { rol: 'repartidor' as Rol },
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/admin/RestaurantesView.vue'),
@@ -64,6 +70,15 @@ const router = createRouter({
       name: 'admin-restaurante-detalle',
       component: () => import('../views/admin/RestauranteDetalleView.vue'),
       meta: { rol: ['admin_general', 'admin_restaurante'] as Rol[] },
+    },
+    {
+      // El cliente hace seguimiento de su propio pedido de domicilio acá
+      // (polling de estado + ubicación del repartidor). Requiere cuenta:
+      // domicilio interno solo lo pide un cliente logueado (ver backend).
+      path: '/cliente/pedidos/:id/seguimiento',
+      name: 'cliente-seguimiento-pedido',
+      component: () => import('../views/cliente/SeguimientoPedidoView.vue'),
+      meta: { rol: 'cliente' as Rol },
     },
   ],
 })
