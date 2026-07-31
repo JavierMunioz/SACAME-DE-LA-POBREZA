@@ -288,9 +288,21 @@ def listar_pedidos(
     estado: EstadoPedido | None = None,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(
-        require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR)
+        require_roles(Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR, Rol.CLIENTE)
     ),
 ):
+    if usuario.rol == Rol.CLIENTE:
+        # "Mis pedidos": historial propio del cliente, cruza restaurantes
+        # (a diferencia del staff, que solo ve lo de su restaurante). Sin
+        # esto no había forma de recuperar el pedido si cerraba la
+        # pestaña — el link de seguimiento solo llegaba por el redirect
+        # justo después de pedir.
+        query = db.query(Pedido).filter(Pedido.cliente_id == usuario.id)
+        if estado is not None:
+            query = query.filter(Pedido.estado == estado)
+        pedidos = query.order_by(Pedido.created_at.desc()).all()
+        return [_pedido_a_out(p) for p in pedidos]
+
     query = db.query(Pedido).filter(Pedido.restaurante_id == usuario.restaurante_id)
 
     if usuario.rol == Rol.REPARTIDOR:

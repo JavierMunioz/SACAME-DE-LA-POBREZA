@@ -72,6 +72,15 @@ const router = createRouter({
       meta: { rol: ['admin_general', 'admin_restaurante'] as Rol[] },
     },
     {
+      // Historial de pedidos del cliente — sin esto, cerrar la pestaña
+      // después de pedir domicilio dejaba sin forma de recuperar el link
+      // de seguimiento (ver Brain.md).
+      path: '/cliente/pedidos',
+      name: 'cliente-mis-pedidos',
+      component: () => import('../views/cliente/MisPedidosView.vue'),
+      meta: { rol: 'cliente' as Rol },
+    },
+    {
       // El cliente hace seguimiento de su propio pedido de domicilio acá
       // (polling de estado + ubicación del repartidor). Requiere cuenta:
       // domicilio interno solo lo pide un cliente logueado (ver backend).

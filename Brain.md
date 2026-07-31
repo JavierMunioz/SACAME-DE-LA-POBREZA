@@ -56,6 +56,13 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] "Mis pedidos": el cliente puede recuperar el seguimiento aunque cierre la pestaña
+Bug real reportado apenas se entregó domicilio: el único link al seguimiento (`/cliente/pedidos/:id/seguimiento`) llegaba por el redirect justo después de confirmar el pedido — si el cliente cerraba la pestaña, no había forma de volver a encontrarlo.
+
+- Backend: `GET /pedidos` ahora también acepta rol `cliente` (antes era solo staff). Rama separada: para cliente filtra por `Pedido.cliente_id == usuario.id` sin scoping de restaurante (su historial cruza restaurantes, a diferencia del staff que solo ve lo suyo), orden por `created_at` descendente (más reciente primero, no FIFO como las colas de staff).
+- Frontend: nueva `MisPedidosView.vue` en `/cliente/pedidos`, link "Mis pedidos" en el nav de `cliente/HomeView.vue` (solo si hay sesión). Lista todo el historial (mesa y domicilio); solo los de `domicilio_interno` son clickeables hacia el seguimiento en vivo — un pedido de mesa no tiene ese flujo.
+- 1 test nuevo (97 en total): cliente lista su propio historial y todos los pedidos devueltos son suyos.
+
 ### [2026-07-31] Domicilio: canal nuevo en pedidos, domicilio interno con repartidor y tracking en vivo, Rappi/Didi como registro manual
 Pedido del usuario: soporte de domicilio, tanto interno (propio) como Rappi/Didi. Se acordó explícitamente **no integrar la API real de Rappi/Didi** (piden cuenta de comercio, contrato, webhooks — no tiene sentido para este proyecto); esos dos canales quedan como registro manual del staff para que aparezcan en el reporte. Domicilio interno sí se opera de punta a punta: el cliente lo pide desde la página del restaurante y hace seguimiento por polling de la ubicación del repartidor asignado.
 

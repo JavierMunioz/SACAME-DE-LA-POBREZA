@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Grid, Search } from '@element-plus/icons-vue'
+import { Grid, List, Search } from '@element-plus/icons-vue'
 import { listarRestaurantes, type Restaurante } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
@@ -88,6 +88,10 @@ onMounted(async () => {
         <button type="button" class="nav-link" @click="dialogoComoFuncionaAbierto = true">
           ¿Cómo funciona?
         </button>
+        <router-link v-if="estaLogueado" to="/cliente/pedidos" class="nav-link">
+          <el-icon :size="16"><List /></el-icon>
+          Mis pedidos
+        </router-link>
       </nav>
       <div class="acciones-header">
         <span v-if="estaLogueado" class="saludo">Hola, {{ auth.usuario?.nombre }}</span>
@@ -299,6 +303,7 @@ onMounted(async () => {
   cursor: pointer;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
+  text-decoration: none;
 }
 
 .nav-link:hover {

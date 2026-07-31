@@ -152,6 +152,20 @@ def test_repartidor_no_puede_marcar_en_camino_pedido_ajeno(
     assert r.status_code == 403
 
 
+def test_cliente_ve_su_historial_de_pedidos(client, cliente_autenticado, restaurante_con_mesa):
+    _crear_pedido_domicilio(
+        client,
+        cliente_autenticado["headers"],
+        restaurante_con_mesa["restaurante"].id,
+        restaurante_con_mesa["menu_item"].id,
+    )
+    r = client.get("/pedidos", headers=cliente_autenticado["headers"])
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) >= 1
+    assert all(p["cliente_id"] == cliente_autenticado["usuario_id"] for p in data)
+
+
 def test_repartidor_solo_ve_sus_pedidos_asignados(
     client, cliente_autenticado, mesero_autenticado, cocina_autenticado, repartidor_autenticado, restaurante_con_mesa
 ):
