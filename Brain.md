@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] Mesas de la comanda con forma real y sillas según capacidad
+Pedido del usuario: en el panel de mesero (comanda), que cada mesa se vea con forma de mesa y la cantidad de sillas alrededor que corresponda a su capacidad real — no un número al lado, la representación visual misma.
+
+- `MesaVisual.vue` (nuevo, componente reusable): SVG con un tablero central (rect redondeado) y N círculos ("sillas") distribuidos en círculo alrededor, `N = capacidad` de la mesa real (prop `capacidad`, sin techo artificial — si el admin carga una mesa de 12, se dibujan 12 sillas). Posición de cada silla calculada con trigonometría simple (`ángulo = -90° + (360°/N)·i`, arranca arriba y va en sentido horario). Color del tablero y las sillas cambia según `estado` (libre=verde, ocupada=indigo, reservada=ámbar) — mismos colores que ya usaban los badges de estado, no paleta nueva.
+- Integrado en la tarjeta de mesa del mesero (`mesero/HomeView.vue`, pestaña Mesas), entre el encabezado (número + badge de estado) y el texto de capacidad/código — el texto "N personas" se mantiene, el visual es un refuerzo, no un reemplazo de la info real.
+- No se tocó backend — `capacidad` y `estado` ya eran datos reales existentes, esto es pura presentación.
+- Typecheck y build de frontend limpios. Probado en vivo: mesa de 4 personas muestra 4 sillas en cruz (arriba/derecha/abajo/izquierda) en verde; al ocupar la mesa desde el mismo panel, tablero y sillas pasan a indigo en vivo sin recargar.
+
 ### [2026-07-31] Se eliminó el glassmorphism de toda la app
 Pedido directo del usuario: sacar todos los efectos glass. El sistema de diseño original (pasada Epicurean/Stitch) lo reservaba a puntos específicos (login, home cliente, modales) — se sacó por completo, no se dejó ningún resto.
 

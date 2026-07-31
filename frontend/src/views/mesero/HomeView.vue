@@ -18,6 +18,7 @@ import { useAuthStore } from '../../stores/auth'
 import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
 import { imagenComida } from '../../utils/imagenesComida'
 import AppTopNav from '../../components/AppTopNav.vue'
+import MesaVisual from '../../components/MesaVisual.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
 // por polling cada 5s, simple y suficiente para el volumen de un MVP.
@@ -430,6 +431,9 @@ onUnmounted(() => clearInterval(intervalo))
               <span class="badge-estado" :class="`badge-estado-mesa--${mesa.estado}`">
                 {{ etiquetaEstadoMesa[mesa.estado] }}
               </span>
+            </div>
+            <div class="contenedor-mesa-visual">
+              <MesaVisual :capacidad="mesa.capacidad" :estado="mesa.estado" class="mesa-visual-tarjeta" />
             </div>
             <div class="info-mesa">
               <p class="capacidad-mesa">{{ mesa.capacidad }} personas</p>
@@ -932,8 +936,20 @@ onUnmounted(() => clearInterval(intervalo))
   gap: var(--space-1);
 }
 
+.contenedor-mesa-visual {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-3) 0;
+}
+
+.mesa-visual-tarjeta {
+  width: 96px;
+  height: 96px;
+}
+
 .info-mesa {
   margin-bottom: var(--space-4);
+  text-align: center;
 }
 
 .capacidad-mesa {
