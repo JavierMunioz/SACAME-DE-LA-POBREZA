@@ -56,6 +56,16 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] Las acciones de mesa (ocupar/pedir/liberar) se disparan tocando la mesa, no con botones
+Pedido del usuario: sacar los botones "Ocupar"/"Liberar"/"Pedido" de la tarjeta de mesa del mesero — la acción tiene que salir de tocar la mesa misma.
+
+- Libre tiene una sola acción posible: tocar la mesa abre directo el diálogo de ocupar (sin menú intermedio, no hay ambigüedad que resolver).
+- Ocupada tiene dos acciones reales (tomar pedido / liberar) — tocar la mesa abre un menú chico que cubre la tarjeta entera con las dos opciones; tocar el fondo del menú (no las opciones) lo cancela. Implementado a mano (`menuMesaAbierta` + `@click.stop` en las opciones para no re-disparar el toggle de la tarjeta), no con `el-dropdown` de Element Plus — evita duplicar el markup de la tarjeta entre estados.
+- Reservada sigue sin ninguna acción disponible (no cambia).
+- El botón "Atendido" del aviso de llamado del mesero se mantiene como botón aparte (no es parte de ocupar/pedir/liberar) — se le agregó `@click.stop` para que no dispare el click de la tarjeta por accidente.
+- Texto de ayuda debajo de la capacidad ("Tocá la mesa para ocupar" / "Tocá la mesa para pedido/liberar") para que quede claro que la tarjeta es interactiva, ya que no quedó ningún botón visible que lo insinúe.
+- Typecheck y build de frontend limpios. Probado en vivo: tocar mesa libre abre Ocupar directo; tocar mesa ocupada abre el menú de dos opciones; tocar el fondo del menú lo cierra sin acción; "Tomar pedido" y "Liberar mesa" funcionan igual que antes.
+
 ### [2026-07-31] Mesas de la comanda con forma real y sillas según capacidad
 Pedido del usuario: en el panel de mesero (comanda), que cada mesa se vea con forma de mesa y la cantidad de sillas alrededor que corresponda a su capacidad real — no un número al lado, la representación visual misma.
 

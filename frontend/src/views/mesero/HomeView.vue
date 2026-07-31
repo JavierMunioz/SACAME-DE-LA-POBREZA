@@ -224,6 +224,26 @@ async function liberar(mesa: Mesa) {
   }
 }
 
+// Ninguna acción sobre la mesa vive en un botón aparte: se dispara al
+// presionar la mesa misma. Libre tiene una sola acción posible (ocupar),
+// así que dispara directo; ocupada tiene dos (pedido/liberar), así que
+// abre un menú chico en vez de adivinar cuál querés.
+const menuMesaAbierta = ref<number | null>(null)
+
+function onClickMesa(mesa: Mesa) {
+  if (mesa.estado === 'libre') {
+    abrirDialogoOcupar(mesa)
+  } else if (mesa.estado === 'ocupada') {
+    menuMesaAbierta.value = menuMesaAbierta.value === mesa.id ? null : mesa.id
+  }
+}
+
+function elegirAccionMesa(mesa: Mesa, accion: 'pedido' | 'liberar') {
+  menuMesaAbierta.value = null
+  if (accion === 'pedido') abrirDialogoPedido(mesa)
+  else liberar(mesa)
+}
+
 async function atender(mesa: Mesa) {
   procesandoMesa.value = mesa.id
   try {
@@ -425,7 +445,17 @@ onUnmounted(() => clearInterval(intervalo))
           <p class="estado-vacio-texto">Las mesas las crea el admin del restaurante.</p>
         </div>
         <div v-else class="grid-mesas">
-          <article v-for="mesa in mesas" :key="mesa.id" class="tarjeta-mesa" :class="{ 'tarjeta-mesa--llamando': mesa.llamado_mesero }">
+          <article
+            v-for="mesa in mesas"
+            :key="mesa.id"
+            class="tarjeta-mesa"
+            :class="{
+              'tarjeta-mesa--llamando': mesa.llamado_mesero,
+              'tarjeta-mesa--clickable': mesa.estado !== 'reservada',
+              'tarjeta-mesa--procesando': procesandoMesa === mesa.id,
+            }"
+            @click="onClickMesa(mesa)"
+          >
             <div class="cabecera-pedido">
               <span class="mesa">Mesa {{ mesa.numero }}</span>
               <span class="badge-estado" :class="`badge-estado-mesa--${mesa.estado}`">
@@ -440,48 +470,36 @@ onUnmounted(() => clearInterval(intervalo))
               <p v-if="mesa.codigo_acceso" class="codigo-acceso-mesa">
                 Código: <span class="font-mono">{{ mesa.codigo_acceso }}</span>
               </p>
+              <p v-if="mesa.estado === 'libre'" class="pista-accion-mesa">Tocá la mesa para ocupar</p>
+              <p v-else-if="mesa.estado === 'ocupada'" class="pista-accion-mesa">Tocá la mesa para pedido/liberar</p>
             </div>
             <div v-if="mesa.llamado_mesero" class="aviso-llamado">
               <span><el-icon :size="14"><Bell /></el-icon> Te están llamando</span>
               <el-button
                 size="small"
                 :loading="procesandoMesa === mesa.id"
-                @click="atender(mesa)"
+                @click.stop="atender(mesa)"
               >
                 Atendido
               </el-button>
             </div>
-            <div class="acciones-pedido">
-              <el-button
-                v-if="mesa.estado === 'libre'"
-                type="primary"
-                size="large"
-                class="boton-accion"
-                :loading="procesandoMesa === mesa.id"
-                @click="abrirDialogoOcupar(mesa)"
+
+            <div
+              v-if="menuMesaAbierta === mesa.id"
+              class="menu-acciones-mesa"
+              @click.stop="menuMesaAbierta = null"
+            >
+              <button type="button" class="opcion-menu-mesa" @click.stop="elegirAccionMesa(mesa, 'pedido')">
+                Tomar pedido
+              </button>
+              <button
+                type="button"
+                class="opcion-menu-mesa opcion-menu-mesa--liberar"
+                @click.stop="elegirAccionMesa(mesa, 'liberar')"
               >
-                Ocupar
-              </el-button>
-              <template v-else-if="mesa.estado === 'ocupada'">
-                <el-button
-                  plain
-                  size="large"
-                  class="boton-accion"
-                  :loading="procesandoMesa === mesa.id"
-                  @click="liberar(mesa)"
-                >
-                  Liberar
-                </el-button>
-                <el-button
-                  type="primary"
-                  size="large"
-                  class="boton-accion"
-                  @click="abrirDialogoPedido(mesa)"
-                >
-                  Pedido
-                </el-button>
-              </template>
-              <el-tag v-else type="info" round>Reservada</el-tag>
+                Liberar mesa
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
             </div>
           </article>
         </div>
@@ -905,15 +923,81 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .tarjeta-mesa {
+  position: relative;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-5);
   box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-mesa--clickable {
+  cursor: pointer;
+}
+
+.tarjeta-mesa--clickable:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
+  border-color: var(--color-secondary);
+}
+
+.tarjeta-mesa--procesando {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .tarjeta-mesa--llamando {
   border-color: var(--color-warning);
+}
+
+.pista-accion-mesa {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.menu-acciones-mesa {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+}
+
+.opcion-menu-mesa {
+  display: block;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.opcion-menu-mesa:hover {
+  background: var(--surface-muted);
+}
+
+.opcion-menu-mesa--liberar {
+  color: var(--color-danger);
+  border-color: var(--color-danger-bg);
+}
+
+.pista-cerrar-menu-mesa {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
 }
 
 .aviso-llamado {
