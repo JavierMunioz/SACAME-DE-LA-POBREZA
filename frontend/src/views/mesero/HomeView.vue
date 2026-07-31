@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Tickets, Grid, Bell } from '@element-plus/icons-vue'
+import { Tickets, Grid, Bell, ShoppingBag, Document, Promotion } from '@element-plus/icons-vue'
 import {
   cancelarPedido,
   confirmarPedido,
@@ -16,6 +16,7 @@ import { atenderLlamado, liberarMesa, ocuparMesaStaff } from '../../api/mesas'
 import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
+import { imagenComida } from '../../utils/imagenesComida'
 import AppTopNav from '../../components/AppTopNav.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
@@ -258,6 +259,22 @@ const itemsSeleccionados = computed(() =>
       observaciones: observacionesPorItem[Number(menu_item_id)]?.trim() || undefined,
     })),
 )
+
+const totalPedidoMesero = computed(() =>
+  itemsSeleccionados.value.reduce((suma, sel) => {
+    const item = menu.value.find((m) => m.id === sel.menu_item_id)
+    return suma + (item ? Number(item.precio) * sel.cantidad : 0)
+  }, 0),
+)
+
+function sumarCantidad(itemId: number) {
+  cantidades[itemId] = (cantidades[itemId] ?? 0) + 1
+}
+
+function restarCantidad(itemId: number) {
+  if (!cantidades[itemId]) return
+  cantidades[itemId] -= 1
+}
 
 async function enviarPedidoMesero() {
   if (!mesaPedido.value || itemsSeleccionados.value.length === 0) return
@@ -530,8 +547,17 @@ onUnmounted(() => clearInterval(intervalo))
       </template>
     </el-dialog>
 
-    <el-dialog v-model="dialogoPedidoAbierto" title="Tomar pedido" width="420px">
-      <p v-if="mesaPedido" class="dialogo-mesa">Mesa {{ mesaPedido.numero }}</p>
+    <el-dialog v-model="dialogoPedidoAbierto" width="460px" class="dialogo-tomar-pedido" :show-close="true">
+      <template #header>
+        <div class="cabecera-tomar-pedido">
+          <span class="icono-tomar-pedido"><el-icon :size="20"><ShoppingBag /></el-icon></span>
+          <div>
+            <p class="titulo-tomar-pedido">Tomar pedido</p>
+            <p v-if="mesaPedido" class="subtitulo-tomar-pedido">Mesa {{ mesaPedido.numero }}</p>
+          </div>
+        </div>
+      </template>
+
       <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
       <div v-else class="contenedor-menu-pedido">
         <div v-for="grupo in gruposMenuPedido" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria-pedido">
@@ -541,11 +567,24 @@ onUnmounted(() => clearInterval(intervalo))
           <ul class="lista-menu-pedido">
             <li v-for="item in grupo.items" :key="item.id" class="fila-menu-pedido">
               <div class="fila-menu-pedido-linea">
-                <div>
+                <img :src="imagenComida(item.id, 100, 100)" :alt="item.nombre" class="foto-item-menu" />
+                <div class="info-item-menu">
                   <p class="nombre-item-menu">{{ item.nombre }}</p>
-                  <p class="precio-item-menu font-mono">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                  <p class="precio-item-menu">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                  <p v-if="item.descripcion" class="descripcion-item-menu">{{ item.descripcion }}</p>
                 </div>
-                <el-input-number v-model="cantidades[item.id]" :min="0" :max="20" size="small" />
+                <div class="stepper-item-menu">
+                  <button
+                    type="button"
+                    class="boton-stepper-mesero"
+                    :disabled="!cantidades[item.id]"
+                    @click="restarCantidad(item.id)"
+                  >
+                    −
+                  </button>
+                  <span class="cantidad-stepper-mesero">{{ cantidades[item.id] ?? 0 }}</span>
+                  <button type="button" class="boton-stepper-mesero" @click="sumarCantidad(item.id)">+</button>
+                </div>
               </div>
               <el-input
                 v-if="(cantidades[item.id] ?? 0) > 0"
@@ -558,7 +597,19 @@ onUnmounted(() => clearInterval(intervalo))
             </li>
           </ul>
         </div>
+
+        <div v-if="itemsSeleccionados.length > 0" class="resumen-pedido-mesero">
+          <span class="icono-resumen-pedido"><el-icon :size="18"><Document /></el-icon></span>
+          <div class="texto-resumen-pedido">
+            <p class="titulo-resumen-pedido">Resumen del pedido</p>
+            <p class="subtitulo-resumen-pedido">
+              {{ itemsSeleccionados.length }} {{ itemsSeleccionados.length === 1 ? 'producto' : 'productos' }}
+            </p>
+          </div>
+          <p class="total-resumen-pedido">Total: <strong>${{ totalPedidoMesero.toLocaleString('es-CO') }}</strong></p>
+        </div>
       </div>
+
       <template #footer>
         <el-button @click="dialogoPedidoAbierto = false">Cancelar</el-button>
         <el-button
@@ -567,6 +618,7 @@ onUnmounted(() => clearInterval(intervalo))
           :disabled="itemsSeleccionados.length === 0"
           @click="enviarPedidoMesero"
         >
+          <el-icon :size="14" style="margin-right: 6px"><Promotion /></el-icon>
           Enviar pedido
         </el-button>
       </template>
@@ -916,9 +968,38 @@ onUnmounted(() => clearInterval(intervalo))
   color: var(--color-warning-text);
 }
 
+.cabecera-tomar-pedido {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.icono-tomar-pedido {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+  flex-shrink: 0;
+}
+
+.titulo-tomar-pedido {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.subtitulo-tomar-pedido {
+  color: var(--color-secondary);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
 .contenedor-menu-pedido {
   margin-top: var(--space-2);
-  max-height: 360px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -953,8 +1034,20 @@ onUnmounted(() => clearInterval(intervalo))
 .fila-menu-pedido-linea {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+.foto-item-menu {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.info-item-menu {
+  flex: 1;
+  min-width: 0;
 }
 
 .input-observaciones-item {
@@ -968,6 +1061,91 @@ onUnmounted(() => clearInterval(intervalo))
 
 .precio-item-menu {
   color: var(--text-secondary);
+  font-size: 0.825rem;
+}
+
+.descripcion-item-menu {
+  color: var(--text-tertiary);
+  font-size: 0.775rem;
+  margin-top: var(--space-1);
+}
+
+.stepper-item-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  flex-shrink: 0;
+}
+
+.boton-stepper-mesero {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-secondary);
+}
+
+.boton-stepper-mesero:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cantidad-stepper-mesero {
+  min-width: 1.1rem;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.resumen-pedido-mesero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-secondary-soft);
+  border-radius: var(--radius-md);
+}
+
+.icono-resumen-pedido {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--color-secondary);
+  flex-shrink: 0;
+}
+
+.texto-resumen-pedido {
+  flex: 1;
+}
+
+.titulo-resumen-pedido {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.subtitulo-resumen-pedido {
+  color: var(--color-secondary);
   font-size: 0.8rem;
+}
+
+.total-resumen-pedido {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.total-resumen-pedido strong {
+  color: var(--color-secondary);
+  font-size: 1.05rem;
 }
 </style>

@@ -56,6 +56,15 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] Rediseño del diálogo "Tomar pedido" del mesero (mockup pegado)
+Mismo patrón que las dos pasadas anteriores: usuario pegó un mockup pidiendo que el diálogo de tomar pedido del panel de mesero (`mesero/HomeView.vue`) se viera así — header con ícono de bolsa en círculo + "Tomar pedido"/"Mesa N", foto redonda por plato, stepper en caja con bordes, caja "Resumen del pedido" resaltada (ícono + cantidad de productos + total), footer con Cancelar y "Enviar pedido" con ícono de avión de papel.
+
+- Sin datos inventados acá — es una reorganización visual pura de datos que ya eran reales (mismo `cantidades`/`observacionesPorItem`/`itemsSeleccionados`, solo se agregó `totalPedidoMesero` computado y `sumarCantidad`/`restarCantidad` para el stepper custom en vez de `el-input-number`).
+- Diálogo pasó de `title` prop simple a un `#header` slot custom (ícono `ShoppingBag` en círculo + título + subtítulo mesa en indigo).
+- Cada fila de plato ahora tiene foto (`imagenComida`, redonda) + nombre/precio/descripción + stepper en caja (mismo patrón visual que el stepper de `MesaView.vue`, no el `el-input-number` de Element Plus).
+- Caja "Resumen del pedido" aparece solo cuando hay al menos un ítem seleccionado (`itemsSeleccionados.length > 0`) — ícono `Document`, cantidad de productos distintos (no unidades totales, coincide con cómo lo interpretó el mockup: 1 Ceviche + 2 Arroz = "2 productos"), total real.
+- Typecheck y build de frontend limpios (no se tocó backend). Probado en vivo: 1× Ceviche mixto + 2× Arroz con mariscos → "2 productos", Total $119.000 — coincide exacto con los números del mockup.
+
 ### [2026-07-30] Rediseño de la pantalla de pedido en mesa (mockup pegado) + "Llamar al mesero" real
 El usuario pegó un mockup (imagen) pidiendo que `MesaView.vue` (la pantalla que ves al escanear el QR y pedir desde la mesa) se viera así: barra superior con volver/info/llamar mesero, tarjeta hero con foto+nombre+rating+dirección+horario, tarjeta verde de sesión con saludo y código, pills de categoría + buscador, tarjetas de plato con foto, y panel de "Tu pedido" tipo carrito lateral con estado vacío.
 
