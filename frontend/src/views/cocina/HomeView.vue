@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Connection, KnifeFork, SwitchButton, Warning } from '@element-plus/icons-vue'
+import { Connection, KnifeFork, Loading, SwitchButton, Warning } from '@element-plus/icons-vue'
 import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
 
@@ -75,13 +75,24 @@ async function marcarComoListo(pedido: Pedido) {
   procesando.value = pedido.id
   try {
     await marcarListo(pedido.id)
-    ElMessage.success(`Mesa ${pedido.mesa_numero} lista para servir`)
+    ElMessage.success(
+      pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero} lista para servir` : 'Domicilio listo para salir',
+    )
     await cargar()
   } catch {
     ElMessage.error('No se pudo actualizar el pedido')
   } finally {
     procesando.value = null
   }
+}
+
+// Mismo patrón táctil que las mesas del mesero: acá cada estado tiene
+// una única acción posible (nada que elegir), así que toda la tarjeta
+// es el botón — no hace falta menú intermedio ni botón chico aparte.
+function onClickComanda(pedido: Pedido) {
+  if (procesando.value !== null) return
+  if (pedido.estado === 'confirmado') empezarPreparacion(pedido)
+  else if (pedido.estado === 'preparando') marcarComoListo(pedido)
 }
 
 function cerrarSesion() {
@@ -144,7 +155,11 @@ onUnmounted(() => {
           v-for="(pedido, i) in pedidos"
           :key="pedido.id"
           class="tarjeta-comanda"
-          :class="`tarjeta-comanda--${urgencia(pedido)}`"
+          :class="[
+            `tarjeta-comanda--${urgencia(pedido)}`,
+            { 'tarjeta-comanda--tocable': pedido.estado !== 'listo', 'tarjeta-comanda--procesando': procesando === pedido.id },
+          ]"
+          @click="onClickComanda(pedido)"
         >
           <div class="cabecera-comanda">
             <div>
@@ -175,22 +190,14 @@ onUnmounted(() => {
           </div>
 
           <div class="acciones-comanda">
-            <el-button
-              v-if="pedido.estado === 'confirmado'"
-              class="boton-accion boton-preparando"
-              :loading="procesando === pedido.id"
-              @click="empezarPreparacion(pedido)"
-            >
-              Preparando
-            </el-button>
-            <el-button
-              v-else-if="pedido.estado === 'preparando'"
-              class="boton-accion boton-listo"
-              :loading="procesando === pedido.id"
-              @click="marcarComoListo(pedido)"
-            >
-              Listo
-            </el-button>
+            <div v-if="pedido.estado === 'confirmado'" class="pista-accion-comanda pista-accion-comanda--preparando">
+              <el-icon v-if="procesando === pedido.id"><Loading /></el-icon>
+              Tocá para pasar a preparando
+            </div>
+            <div v-else-if="pedido.estado === 'preparando'" class="pista-accion-comanda pista-accion-comanda--listo">
+              <el-icon v-if="procesando === pedido.id"><Loading /></el-icon>
+              Tocá para marcar listo
+            </div>
             <div v-else class="aviso-listo">Esperando al mesero</div>
           </div>
         </article>
@@ -421,6 +428,15 @@ onUnmounted(() => {
   transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
+.tarjeta-comanda--tocable {
+  cursor: pointer;
+}
+
+.tarjeta-comanda--procesando {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .tarjeta-comanda:hover {
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
@@ -548,31 +564,25 @@ onUnmounted(() => {
   background: transparent;
 }
 
-.boton-accion {
+.pista-accion-comanda {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
   height: 52px;
   font-size: 1rem;
   font-weight: 700;
-  border: none;
+  border-radius: var(--radius-sm);
   color: white;
 }
 
-.boton-preparando {
+.pista-accion-comanda--preparando {
   background: var(--color-warning);
 }
 
-.boton-preparando:hover {
-  background: #d97706;
-  color: white;
-}
-
-.boton-listo {
+.pista-accion-comanda--listo {
   background: var(--color-success);
-}
-
-.boton-listo:hover {
-  background: #15803d;
-  color: white;
 }
 
 .aviso-listo {

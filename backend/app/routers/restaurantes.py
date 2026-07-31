@@ -484,7 +484,10 @@ def crear_personal(
 def listar_personal(
     restaurante_id: int,
     db: Session = Depends(get_db),
-    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE)),
+    # Mesero también lo necesita: para asignar repartidor a un pedido de
+    # domicilio tiene que poder ver la lista de repartidores de su
+    # restaurante (ver Brain.md, bug donde el select salía vacío).
+    admin=Depends(require_roles(Rol.ADMIN_GENERAL, Rol.ADMIN_RESTAURANTE, Rol.MESERO)),
 ):
     _get_restaurante_o_404(db, restaurante_id)
     _verificar_acceso_restaurante(admin, restaurante_id)

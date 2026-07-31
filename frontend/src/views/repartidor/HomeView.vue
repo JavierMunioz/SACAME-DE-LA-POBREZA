@@ -25,6 +25,11 @@ const INTERVALO_UBICACION_MS = 15000
 const pedidos = ref<Pedido[]>([])
 const cargando = ref(true)
 const procesando = ref<number | null>(null)
+// Mismo patrón táctil que las mesas del mesero: "listo" tiene una sola
+// acción posible (salir), dispara directo al tocar la tarjeta. "en
+// camino" solo tiene "entregado" — consecuente de verdad, así que va
+// detrás de un mini-menú en vez de dispararse con un toque accidental.
+const menuEntregaAbierta = ref<number | null>(null)
 let intervaloPolling: ReturnType<typeof setInterval> | undefined
 let intervaloUbicacion: ReturnType<typeof setInterval> | undefined
 
@@ -61,6 +66,7 @@ async function empezarEntrega(pedido: Pedido) {
 }
 
 async function completarEntrega(pedido: Pedido) {
+  menuEntregaAbierta.value = null
   procesando.value = pedido.id
   try {
     await marcarEntregado(pedido.id)
@@ -70,6 +76,14 @@ async function completarEntrega(pedido: Pedido) {
     ElMessage.error('No se pudo marcar como entregado')
   } finally {
     procesando.value = null
+  }
+}
+
+function onClickEntrega(pedido: Pedido) {
+  if (pedido.estado === 'listo') {
+    empezarEntrega(pedido)
+  } else if (pedido.estado === 'en_camino') {
+    menuEntregaAbierta.value = menuEntregaAbierta.value === pedido.id ? null : pedido.id
   }
 }
 
@@ -115,7 +129,13 @@ onUnmounted(() => {
       </div>
 
       <div v-else class="grid-entregas">
-        <article v-for="pedido in pedidos" :key="pedido.id" class="tarjeta-entrega">
+        <article
+          v-for="pedido in pedidos"
+          :key="pedido.id"
+          class="tarjeta-entrega tarjeta-entrega--tocable"
+          :class="{ 'tarjeta-entrega--procesando': procesando === pedido.id }"
+          @click="onClickEntrega(pedido)"
+        >
           <div class="cabecera-entrega">
             <h2>Pedido #{{ pedido.id }}</h2>
             <el-tag :type="pedido.estado === 'en_camino' ? 'warning' : 'info'" round>
@@ -127,12 +147,17 @@ onUnmounted(() => {
             type="button"
             class="fila-direccion"
             :disabled="!pedido.direccion_entrega"
-            @click="abrirEnMapa(pedido)"
+            @click.stop="abrirEnMapa(pedido)"
           >
             <el-icon :size="16"><LocationFilled /></el-icon>
             <span>{{ pedido.direccion_entrega ?? 'Sin dirección' }}</span>
           </button>
-          <a v-if="pedido.telefono_entrega" :href="`tel:${pedido.telefono_entrega}`" class="fila-telefono">
+          <a
+            v-if="pedido.telefono_entrega"
+            :href="`tel:${pedido.telefono_entrega}`"
+            class="fila-telefono"
+            @click.stop
+          >
             <el-icon :size="16"><Phone /></el-icon>
             <span>{{ pedido.telefono_entrega }}</span>
           </a>
@@ -144,25 +169,27 @@ onUnmounted(() => {
             </li>
           </ul>
 
-          <el-button
-            v-if="pedido.estado === 'listo'"
-            type="primary"
-            class="boton-accion"
-            :loading="procesando === pedido.id"
-            @click="empezarEntrega(pedido)"
+          <p v-if="pedido.estado === 'listo'" class="pista-accion-entrega">
+            <el-icon :size="14"><Bell /></el-icon>
+            Tocá para marcar en camino
+          </p>
+          <p v-else class="pista-accion-entrega">Tocá para marcar entregado</p>
+
+          <div
+            v-if="menuEntregaAbierta === pedido.id"
+            class="menu-acciones-entrega"
+            @click.stop="menuEntregaAbierta = null"
           >
-            <el-icon :size="16" style="margin-right: 6px"><Bell /></el-icon>
-            Marcar en camino
-          </el-button>
-          <el-button
-            v-else
-            type="success"
-            class="boton-accion"
-            :loading="procesando === pedido.id"
-            @click="completarEntrega(pedido)"
-          >
-            Marcar entregado
-          </el-button>
+            <button
+              type="button"
+              class="opcion-menu-entrega"
+              :disabled="procesando === pedido.id"
+              @click.stop="completarEntrega(pedido)"
+            >
+              Marcar entregado
+            </button>
+            <p class="pista-cerrar-menu-entrega">Tocá afuera para cancelar</p>
+          </div>
         </article>
       </div>
     </main>
@@ -221,6 +248,7 @@ onUnmounted(() => {
 }
 
 .tarjeta-entrega {
+  position: relative;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -229,6 +257,15 @@ onUnmounted(() => {
   flex-direction: column;
   gap: var(--space-3);
   box-shadow: var(--shadow-soft), var(--highlight-inset);
+}
+
+.tarjeta-entrega--tocable {
+  cursor: pointer;
+}
+
+.tarjeta-entrega--procesando {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .cabecera-entrega {
@@ -285,9 +322,51 @@ onUnmounted(() => {
   margin-right: var(--space-2);
 }
 
-.boton-accion {
+.pista-accion-entrega {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.menu-acciones-entrega {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+}
+
+.opcion-menu-entrega {
+  display: block;
   width: 100%;
-  height: 44px;
-  font-weight: 600;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.opcion-menu-entrega:hover {
+  background: var(--color-success);
+  color: white;
+}
+
+.pista-cerrar-menu-entrega {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
 }
 </style>

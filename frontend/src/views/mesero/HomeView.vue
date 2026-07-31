@@ -105,6 +105,7 @@ async function asignarRepartidorAPedido(pedido: Pedido) {
     const { asignarRepartidor } = await import('../../api/pedidos')
     await asignarRepartidor(pedido.id, repartidorId)
     ElMessage.success('Repartidor asignado')
+    menuPedidoAbierto.value = null
     await cargar()
   } catch {
     ElMessage.error('No se pudo asignar el repartidor')
@@ -285,6 +286,33 @@ function elegirAccionMesa(mesa: Mesa, accion: 'pedido' | 'liberar') {
   else liberar(mesa)
 }
 
+// Mismo patrón táctil que las mesas: nada de botones sueltos en la
+// tarjeta, la acción sale de tocar la tarjeta del pedido.
+const menuPedidoAbierto = ref<number | null>(null)
+
+function pedidoEsTocable(pedido: Pedido): boolean {
+  if (pedido.estado === 'pendiente') return true
+  if (pedido.estado === 'listo') {
+    // Domicilio ya asignado: no hay nada más que el mesero pueda hacer,
+    // le toca al repartidor — no tiene sentido abrir un menú vacío.
+    if (pedido.canal === 'domicilio_interno') return !pedido.repartidor_id
+    return true
+  }
+  return false
+}
+
+function onClickPedido(pedido: Pedido) {
+  if (!pedidoEsTocable(pedido)) return
+  menuPedidoAbierto.value = menuPedidoAbierto.value === pedido.id ? null : pedido.id
+}
+
+async function elegirAccionPedido(pedido: Pedido, accion: 'confirmar' | 'cancelar' | 'entregar') {
+  menuPedidoAbierto.value = null
+  if (accion === 'confirmar') await confirmar(pedido)
+  else if (accion === 'cancelar') await cancelar(pedido)
+  else await entregar(pedido)
+}
+
 async function atender(mesa: Mesa) {
   procesandoMesa.value = mesa.id
   try {
@@ -360,6 +388,7 @@ onMounted(() => {
   intervalo = setInterval(() => {
     cargar()
     if (vista.value === 'mesas') cargarMesas()
+    cargarRepartidores()
   }, INTERVALO_POLLING_MS)
 })
 onUnmounted(() => clearInterval(intervalo))
@@ -426,7 +455,8 @@ onUnmounted(() => clearInterval(intervalo))
             v-for="pedido in pedidosActivos"
             :key="pedido.id"
             class="tarjeta-pedido"
-            :class="`tarjeta-pedido--${pedido.estado}`"
+            :class="[`tarjeta-pedido--${pedido.estado}`, { 'tarjeta-pedido--tocable': pedidoEsTocable(pedido) }]"
+            @click="onClickPedido(pedido)"
           >
             <div class="cabecera-pedido">
               <span class="grupo-mesa">
@@ -453,68 +483,94 @@ onUnmounted(() => clearInterval(intervalo))
                 <span v-if="item.observaciones" class="observaciones">{{ item.observaciones }}</span>
               </li>
             </ul>
-            <div v-if="pedido.estado === 'pendiente'" class="acciones-pedido">
-              <el-button
-                plain
-                size="large"
-                :loading="procesando === pedido.id"
-                class="boton-accion"
-                @click="cancelar(pedido)"
+            <p v-if="pedido.estado === 'pendiente'" class="pista-accion-mesa">
+              Tocá el pedido para confirmar o cancelar
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && pedido.repartidor_id"
+              class="texto-info-pedido"
+            >
+              Asignado a {{ pedido.repartidor_nombre }}, esperando que salga
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno'"
+              class="pista-accion-mesa"
+            >
+              Tocá el pedido para asignar repartidor
+            </p>
+            <p v-else-if="pedido.estado === 'listo'" class="pista-accion-mesa">
+              Tocá el pedido para marcar entregado
+            </p>
+
+            <div
+              v-if="menuPedidoAbierto === pedido.id && pedido.estado === 'pendiente'"
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
+            >
+              <button
+                type="button"
+                class="opcion-menu-mesa"
+                @click.stop="elegirAccionPedido(pedido, 'confirmar')"
+              >
+                Confirmar
+              </button>
+              <button
+                type="button"
+                class="opcion-menu-mesa opcion-menu-mesa--liberar"
+                @click.stop="elegirAccionPedido(pedido, 'cancelar')"
               >
                 Cancelar
-              </el-button>
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
+            </div>
+
+            <div
+              v-else-if="
+                menuPedidoAbierto === pedido.id &&
+                pedido.estado === 'listo' &&
+                pedido.canal === 'domicilio_interno'
+              "
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
+            >
+              <el-select
+                v-model="repartidorSeleccionado[pedido.id]"
+                placeholder="Elegí repartidor"
+                size="large"
+                class="select-repartidor"
+                @click.stop
+              >
+                <el-option
+                  v-for="r in repartidoresDisponibles"
+                  :key="r.id"
+                  :label="r.nombre"
+                  :value="r.id"
+                />
+              </el-select>
               <el-button
                 type="primary"
                 size="large"
                 :loading="procesando === pedido.id"
-                class="boton-accion"
-                @click="confirmar(pedido)"
+                @click.stop="asignarRepartidorAPedido(pedido)"
               >
-                Confirmar
+                Asignar
               </el-button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
             </div>
+
             <div
-              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno'"
-              class="acciones-pedido acciones-pedido--domicilio"
+              v-else-if="menuPedidoAbierto === pedido.id && pedido.estado === 'listo'"
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
             >
-              <template v-if="!pedido.repartidor_id">
-                <el-select
-                  v-model="repartidorSeleccionado[pedido.id]"
-                  placeholder="Elegí repartidor"
-                  size="large"
-                  class="select-repartidor"
-                >
-                  <el-option
-                    v-for="r in repartidoresDisponibles"
-                    :key="r.id"
-                    :label="r.nombre"
-                    :value="r.id"
-                  />
-                </el-select>
-                <el-button
-                  type="primary"
-                  size="large"
-                  :loading="procesando === pedido.id"
-                  class="boton-accion"
-                  @click="asignarRepartidorAPedido(pedido)"
-                >
-                  Asignar
-                </el-button>
-              </template>
-              <p v-else class="texto-info-pedido">
-                Asignado a {{ pedido.repartidor_nombre }}, esperando que salga
-              </p>
-            </div>
-            <div v-else-if="pedido.estado === 'listo'" class="acciones-pedido">
-              <el-button
-                type="success"
-                size="large"
-                :loading="procesando === pedido.id"
-                class="boton-accion"
-                @click="entregar(pedido)"
+              <button
+                type="button"
+                class="opcion-menu-mesa"
+                @click.stop="elegirAccionPedido(pedido, 'entregar')"
               >
                 Marcar entregado
-              </el-button>
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
             </div>
           </article>
         </div>
@@ -832,6 +888,7 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .tarjeta-pedido {
+  position: relative;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-left: 4px solid var(--color-warning);
@@ -843,6 +900,10 @@ onUnmounted(() => clearInterval(intervalo))
 
 .tarjeta-pedido:hover {
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
+}
+
+.tarjeta-pedido--tocable {
+  cursor: pointer;
 }
 
 .tarjeta-pedido--confirmado,
@@ -960,16 +1021,6 @@ onUnmounted(() => clearInterval(intervalo))
   font-size: 0.825rem;
 }
 
-.acciones-pedido {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.acciones-pedido--domicilio {
-  align-items: center;
-}
-
 .select-repartidor {
   flex: 1 1 160px;
   min-width: 0;
@@ -979,11 +1030,6 @@ onUnmounted(() => clearInterval(intervalo))
   font-size: 0.875rem;
   color: var(--text-secondary);
   font-style: italic;
-}
-
-.boton-accion {
-  flex: 1;
-  font-weight: 600;
 }
 
 .dialogo-mesa {

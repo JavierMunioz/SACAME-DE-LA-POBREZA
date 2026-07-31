@@ -56,6 +56,15 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-07-31] Bug real: mesero no podía asignar repartidor + modo táctil extendido a pedidos/entregas/comanda
+Reporte del usuario: creaba un repartidor pero no le salía en el selector al asignar un domicilio. Causa: `GET /restaurantes/{id}/personal` (de donde el mesero saca la lista para el `<el-select>`) solo permitía `admin_general`/`admin_restaurante` — el mesero pegaba 403 silencioso, lista vacía sin ningún error visible. Fix: se agregó `Rol.MESERO` a ese endpoint (`_verificar_acceso_restaurante` ya lo scopeaba correctamente a su propio restaurante, no hacía falta tocar nada más ahí). También se agregó `cargarRepartidores()` al polling de 5s del mesero — antes solo se pedía una vez al montar, así que un repartidor creado después de abrir la comanda tampoco aparecía sin recargar la página.
+
+Segundo pedido: extender a pedidos/entregas/comanda el mismo patrón táctil de "tocar la tarjeta, sin botones sueltos" que ya tenían las mesas del mesero.
+- **Pedidos del mesero:** `pendiente` (2 acciones: confirmar/cancelar) abre el mismo mini-menú superpuesto que las mesas ocupadas; `listo` con domicilio sin repartidor abre el formulario de asignar (select + botón) dentro del mismo overlay; `listo` con repartidor ya asignado no tiene nada que tocar (informativo); `listo` sin domicilio (mesa/rappi/didi) abre un menú de una sola opción ("Marcar entregado") — a propósito no dispara directo, es una acción terminal.
+- **Entregas del repartidor:** `listo` tiene una sola acción (salir) y dispara directo al tocar la tarjeta, sin menú — como la mesa libre. `en_camino` (entregar, terminal) sí va detrás de un mini-menú de una opción.
+- **Comanda de cocina:** acá cada estado tiene una única acción posible sin ambigüedad y la velocidad importa (cocina real, no hay tiempo de abrir menús) — toda la tarjeta completa es el "botón": tocar en `confirmado` pasa a `preparando`, tocar en `preparando` marca `listo`, `listo` no es tocable (ya no hay nada que cocina pueda hacer). Los botones de dirección/teléfono dentro de la tarjeta de entrega llevan `@click.stop` para no disparar la acción de la tarjeta por accidente.
+- Typecheck y build de frontend limpios, 97 tests de backend en verde (sin tests nuevos, es un fix de permisos + refactor de interacción, no de reglas de negocio).
+
 ### [2026-07-31] "Mis pedidos": el cliente puede recuperar el seguimiento aunque cierre la pestaña
 Bug real reportado apenas se entregó domicilio: el único link al seguimiento (`/cliente/pedidos/:id/seguimiento`) llegaba por el redirect justo después de confirmar el pedido — si el cliente cerraba la pestaña, no había forma de volver a encontrarlo.
 
