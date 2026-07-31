@@ -170,6 +170,8 @@ def canjear_qr(
         mesa_id=mesa.id,
         restaurante_id=mesa.restaurante_id,
         restaurante_nombre=mesa.restaurante.nombre,
+        restaurante_descripcion=mesa.restaurante.descripcion,
+        restaurante_categoria=mesa.restaurante.categoria,
         numero=mesa.numero,
         capacidad=mesa.capacidad,
         reserva_propia=reserva_propia,
@@ -273,6 +275,35 @@ def unirse_a_mesa(
         sesion.cliente.nombre if sesion.cliente_id is not None else (sesion.nombre_invitado or "")
     )
     return _sesion_a_out(sesion, nombre, incluir_token_dueno=False)
+
+
+@router.post("/{mesa_id}/llamar-mesero", status_code=status.HTTP_200_OK)
+def llamar_mesero(mesa_id: int, db: Session = Depends(get_db)):
+    """El cliente en la mesa pide que se acerque el mesero. No exige el
+    token de sesión (mismo criterio de baja fricción que el resto del
+    flujo de invitado): alcanza con que la mesa esté ocupada."""
+    mesa = _get_mesa_o_404(db, mesa_id)
+    sesion = _sesion_activa(db, mesa.id)
+    if sesion is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta mesa no tiene una sesión activa")
+    sesion.llamada_mesero_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{mesa_id}/atender-llamado", status_code=status.HTTP_200_OK)
+def atender_llamado(
+    mesa_id: int,
+    db: Session = Depends(get_db),
+    staff: Usuario = Depends(require_roles(Rol.MESERO, Rol.ADMIN_RESTAURANTE)),
+):
+    mesa = _get_mesa_o_404(db, mesa_id)
+    _verificar_mesa_del_restaurante(staff, mesa)
+    sesion = _sesion_activa(db, mesa.id)
+    if sesion is not None:
+        sesion.llamada_mesero_at = None
+        db.commit()
+    return {"ok": True}
 
 
 def _verificar_mesa_del_restaurante(usuario: Usuario, mesa: Mesa) -> None:

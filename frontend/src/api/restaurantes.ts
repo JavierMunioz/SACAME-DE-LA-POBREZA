@@ -56,6 +56,7 @@ export interface Mesa {
   qr_generado_at: string
   qr_url: string
   codigo_acceso: string | null
+  llamado_mesero: boolean
 }
 
 export interface PlatoVendido {

@@ -40,6 +40,11 @@ class SesionMesa(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     cerrada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Se llenó cuando el cliente tocó "Llamar al mesero"; se limpia cuando
+    # el mesero marca que ya fue. No es un chat, es una bandera simple.
+    llamada_mesero_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     mesa: Mapped["Mesa"] = relationship(back_populates="sesiones")
     cliente: Mapped["Usuario"] = relationship()

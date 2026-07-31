@@ -16,6 +16,8 @@ export interface MesaQrInfo {
   mesa_id: number
   restaurante_id: number
   restaurante_nombre: string
+  restaurante_descripcion: string | null
+  restaurante_categoria: string | null
   numero: number
   capacidad: number
   reserva_propia: ReservaInfo | null
@@ -94,6 +96,14 @@ export async function ocuparMesaStaff(
 
 export async function liberarMesa(mesaId: number): Promise<void> {
   await api.post(`/mesas/${mesaId}/liberar`)
+}
+
+export async function llamarMesero(mesaId: number): Promise<void> {
+  await api.post(`/mesas/${mesaId}/llamar-mesero`)
+}
+
+export async function atenderLlamado(mesaId: number): Promise<void> {
+  await api.post(`/mesas/${mesaId}/atender-llamado`)
 }
 
 export async function unirseAMesa(

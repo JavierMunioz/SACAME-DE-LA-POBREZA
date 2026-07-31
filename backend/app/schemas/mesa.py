@@ -28,6 +28,9 @@ class MesaOut(BaseModel):
     # Lo necesita el mesero para poder decírselo al cliente que quiera
     # sumarse desde su celular después de una apertura manual.
     codigo_acceso: str | None = None
+    # True si la sesión activa tocó "Llamar al mesero" y todavía no se
+    # atendió. Null/false si la mesa no está ocupada.
+    llamado_mesero: bool = False
 
 
 class SesionMesaOut(BaseModel):
@@ -71,6 +74,8 @@ class MesaQrInfo(BaseModel):
     mesa_id: int
     restaurante_id: int
     restaurante_nombre: str
+    restaurante_descripcion: str | None
+    restaurante_categoria: str | None
     numero: int
     capacidad: int
     reserva_propia: ReservaOut | None

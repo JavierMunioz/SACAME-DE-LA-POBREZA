@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Tickets, Grid } from '@element-plus/icons-vue'
+import { Tickets, Grid, Bell } from '@element-plus/icons-vue'
 import {
   cancelarPedido,
   confirmarPedido,
@@ -12,7 +12,7 @@ import {
   type Pedido,
 } from '../../api/pedidos'
 import { generarFactura, type Factura } from '../../api/facturas'
-import { liberarMesa, ocuparMesaStaff } from '../../api/mesas'
+import { atenderLlamado, liberarMesa, ocuparMesaStaff } from '../../api/mesas'
 import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
@@ -222,6 +222,18 @@ async function liberar(mesa: Mesa) {
   }
 }
 
+async function atender(mesa: Mesa) {
+  procesandoMesa.value = mesa.id
+  try {
+    await atenderLlamado(mesa.id)
+    await cargarMesas()
+  } catch {
+    ElMessage.error('No se pudo marcar como atendido')
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
 const dialogoPedidoAbierto = ref(false)
 const mesaPedido = ref<Mesa | null>(null)
 const cantidades = reactive<Record<number, number>>({})
@@ -395,7 +407,7 @@ onUnmounted(() => clearInterval(intervalo))
           <p class="estado-vacio-texto">Las mesas las crea el admin del restaurante.</p>
         </div>
         <div v-else class="grid-mesas">
-          <article v-for="mesa in mesas" :key="mesa.id" class="tarjeta-mesa">
+          <article v-for="mesa in mesas" :key="mesa.id" class="tarjeta-mesa" :class="{ 'tarjeta-mesa--llamando': mesa.llamado_mesero }">
             <div class="cabecera-pedido">
               <span class="mesa">Mesa {{ mesa.numero }}</span>
               <span class="badge-estado" :class="`badge-estado-mesa--${mesa.estado}`">
@@ -407,6 +419,16 @@ onUnmounted(() => clearInterval(intervalo))
               <p v-if="mesa.codigo_acceso" class="codigo-acceso-mesa">
                 Código: <span class="font-mono">{{ mesa.codigo_acceso }}</span>
               </p>
+            </div>
+            <div v-if="mesa.llamado_mesero" class="aviso-llamado">
+              <span><el-icon :size="14"><Bell /></el-icon> Te están llamando</span>
+              <el-button
+                size="small"
+                :loading="procesandoMesa === mesa.id"
+                @click="atender(mesa)"
+              >
+                Atendido
+              </el-button>
             </div>
             <div class="acciones-pedido">
               <el-button
@@ -832,6 +854,30 @@ onUnmounted(() => clearInterval(intervalo))
   border-radius: var(--radius-md);
   padding: var(--space-5);
   box-shadow: var(--shadow-soft), var(--highlight-inset);
+}
+
+.tarjeta-mesa--llamando {
+  border-color: var(--color-warning);
+}
+
+.aviso-llamado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.825rem;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.aviso-llamado span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .info-mesa {

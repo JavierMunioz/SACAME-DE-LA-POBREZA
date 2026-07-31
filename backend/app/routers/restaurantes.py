@@ -49,7 +49,10 @@ def _qr_url(restaurante_id: int, mesa_id: int, qr_token: str) -> str:
 
 
 def _mesa_a_out(
-    mesa: Mesa, estado: str | None = None, codigo_acceso: str | None = None
+    mesa: Mesa,
+    estado: str | None = None,
+    codigo_acceso: str | None = None,
+    llamado_mesero: bool = False,
 ) -> MesaOut:
     return MesaOut(
         id=mesa.id,
@@ -60,6 +63,7 @@ def _mesa_a_out(
         qr_generado_at=mesa.qr_generado_at,
         qr_url=_qr_url(mesa.restaurante_id, mesa.id, mesa.qr_token),
         codigo_acceso=codigo_acceso,
+        llamado_mesero=llamado_mesero,
     )
 
 
@@ -547,14 +551,18 @@ def listar_mesas(
     for mesa in mesas:
         _expirar_reservas_vencidas(db, mesa.id)
         codigo_acceso = None
+        llamado_mesero = False
         if mesa.estado == EstadoMesa.OCUPADA:
             estado = "ocupada"
             sesion = _sesion_activa(db, mesa.id)
             codigo_acceso = sesion.codigo_acceso if sesion is not None else None
+            llamado_mesero = sesion is not None and sesion.llamada_mesero_at is not None
         else:
             _, mesa_libre_ahora = _reserva_propia_y_libre(db, mesa, None)
             estado = "libre" if mesa_libre_ahora else "reservada"
-        salida.append(_mesa_a_out(mesa, estado=estado, codigo_acceso=codigo_acceso))
+        salida.append(
+            _mesa_a_out(mesa, estado=estado, codigo_acceso=codigo_acceso, llamado_mesero=llamado_mesero)
+        )
     return salida
 
 
