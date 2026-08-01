@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CircleCheck, LocationFilled, Van } from '@element-plus/icons-vue'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { CircleCheck, Van } from '@element-plus/icons-vue'
 import { obtenerPedido, type Pedido } from '../../api/pedidos'
+import { obtenerRestaurante } from '../../api/restaurantes'
 
 // Mismo enfoque de polling que el resto de la app (ver Brain.md): sin
 // WebSockets todavía, 5s es suficientemente fresco para que el cliente
@@ -15,6 +18,7 @@ const pedidoId = Number(route.params.id)
 
 const pedido = ref<Pedido | null>(null)
 const cargando = ref(true)
+const restauranteCoords = ref<{ lat: number; lng: number } | null>(null)
 let intervalo: ReturnType<typeof setInterval> | undefined
 
 const PASOS = [
@@ -31,11 +35,6 @@ const pasoActual = computed(() => {
   return PASOS.findIndex((p) => p.estado === pedido.value?.estado)
 })
 
-const ubicacionRepartidorUrl = computed(() => {
-  if (!pedido.value?.repartidor_lat || !pedido.value?.repartidor_lng) return null
-  return `https://www.google.com/maps/search/?api=1&query=${pedido.value.repartidor_lat},${pedido.value.repartidor_lng}`
-})
-
 const haceCuanto = computed(() => {
   if (!pedido.value?.repartidor_actualizado_at) return null
   const segundos = Math.max(
@@ -46,11 +45,87 @@ const haceCuanto = computed(() => {
   return `hace ${Math.floor(segundos / 60)} min`
 })
 
+// --- Mapa en vivo del repartidor ---
+// Leaflet + OpenStreetMap (sin API key, a diferencia de Google Maps) —
+// el marcador del repartidor se saca y se vuelve a poner en cada
+// actualización de ubicación (no solo se mueve): así el punto "parpadea"
+// visualmente cada vez que llega una posición nueva, mismo pedido del
+// usuario ("pintamos y despintamos el marcador").
+const mapaEl = ref<HTMLElement | null>(null)
+let mapa: L.Map | null = null
+let marcadorRepartidor: L.Marker | null = null
+let marcadorRestaurante: L.Marker | null = null
+
+function iconoPulso(claseColor: string) {
+  return L.divIcon({
+    className: 'marcador-vacio',
+    html: `<span class="marcador-pulso ${claseColor}"><span class="marcador-pulso-anillo"></span><span class="marcador-pulso-punto"></span></span>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  })
+}
+
+function inicializarMapa() {
+  if (mapa || !mapaEl.value) return
+  mapa = L.map(mapaEl.value, { zoomControl: false, attributionControl: false })
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(mapa)
+  L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(mapa)
+  actualizarMapa()
+}
+
+function actualizarMapa() {
+  if (!mapa) return
+  const lat = pedido.value?.repartidor_lat
+  const lng = pedido.value?.repartidor_lng
+  const puntos: [number, number][] = []
+
+  if (restauranteCoords.value && !marcadorRestaurante) {
+    marcadorRestaurante = L.marker(
+      [restauranteCoords.value.lat, restauranteCoords.value.lng],
+      { icon: iconoPulso('marcador-pulso--restaurante') },
+    ).addTo(mapa)
+  }
+  if (restauranteCoords.value) puntos.push([restauranteCoords.value.lat, restauranteCoords.value.lng])
+
+  if (lat != null && lng != null) {
+    // Se saca el marcador viejo y se pone uno nuevo — no `setLatLng` —
+    // para que el CSS de pulso se reinicie en cada refresco real.
+    if (marcadorRepartidor) mapa.removeLayer(marcadorRepartidor)
+    marcadorRepartidor = L.marker([lat, lng], { icon: iconoPulso('marcador-pulso--repartidor') }).addTo(mapa)
+    puntos.push([lat, lng])
+  }
+
+  const primerPunto = puntos[0]
+  if (puntos.length === 2) {
+    mapa.fitBounds(puntos, { padding: [32, 32], maxZoom: 16 })
+  } else if (primerPunto) {
+    mapa.setView(primerPunto, 15)
+  }
+}
+
 async function cargar() {
   try {
     pedido.value = await obtenerPedido(pedidoId)
+    if (!restauranteCoords.value && pedido.value.restaurante_id) {
+      const restaurante = await obtenerRestaurante(pedido.value.restaurante_id)
+      if (restaurante.latitud != null && restaurante.longitud != null) {
+        restauranteCoords.value = { lat: restaurante.latitud, lng: restaurante.longitud }
+      }
+    }
   } finally {
     cargando.value = false
+  }
+  // No alcanza con un watch sobre el estado: dispara apenas se asigna
+  // `pedido.value` (mismo tick que el fetch de restaurante, todavía con
+  // `cargando` en true), antes de que el `v-else-if="pedido"` del
+  // template exista en el DOM — `mapaEl` sale null y el mapa nunca se
+  // crea. Acá ya sabemos que `cargando` es false y el DOM está listo,
+  // solo falta esperar el siguiente tick de render.
+  if (pedido.value?.estado === 'en_camino') {
+    await nextTick()
+    inicializarMapa()
   }
 }
 
@@ -58,11 +133,20 @@ function volver() {
   router.push('/cliente')
 }
 
+watch(
+  [() => pedido.value?.repartidor_lat, () => pedido.value?.repartidor_lng, restauranteCoords],
+  () => actualizarMapa(),
+)
+
 onMounted(() => {
   cargar()
   intervalo = setInterval(cargar, INTERVALO_POLLING_MS)
 })
-onUnmounted(() => clearInterval(intervalo))
+onUnmounted(() => {
+  clearInterval(intervalo)
+  mapa?.remove()
+  mapa = null
+})
 </script>
 
 <template>
@@ -107,17 +191,11 @@ onUnmounted(() => clearInterval(intervalo))
               <p v-if="haceCuanto" class="repartidor-actualizado">Última ubicación {{ haceCuanto }}</p>
             </div>
           </div>
-          <a
-            v-if="ubicacionRepartidorUrl"
-            :href="ubicacionRepartidorUrl"
-            target="_blank"
-            rel="noopener"
-            class="boton-ver-mapa"
-          >
-            <el-icon :size="16"><LocationFilled /></el-icon>
-            Ver ubicación en el mapa
-          </a>
-          <p v-else class="repartidor-actualizado">Esperando la primera señal de ubicación...</p>
+
+          <div ref="mapaEl" class="mapa-repartidor" />
+          <p v-if="!pedido.repartidor_lat" class="repartidor-actualizado">
+            Esperando la primera señal de ubicación...
+          </p>
         </div>
 
         <div class="tarjeta-detalle card-soft">
@@ -254,18 +332,13 @@ onUnmounted(() => clearInterval(intervalo))
   font-size: 0.8rem;
 }
 
-.boton-ver-mapa {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--color-secondary-soft);
-  color: var(--color-secondary);
+.mapa-repartidor {
+  width: 100%;
+  height: 220px;
   border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.875rem;
-  text-decoration: none;
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+  background: var(--surface-muted);
 }
 
 .fila-detalle {
@@ -292,5 +365,61 @@ onUnmounted(() => clearInterval(intervalo))
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--color-secondary);
+}
+</style>
+
+<style>
+/* Sin scope a propósito: Leaflet arma los marcadores con HTML crudo
+   (divIcon), no pasan por el compilador de Vue, así que el atributo
+   data-v-* del scoping normal no les llega. */
+.marcador-pulso {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.marcador-pulso-punto {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.marcador-pulso-anillo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: marcador-pulso-anim 1.4s ease-out;
+}
+
+.marcador-pulso--repartidor .marcador-pulso-punto {
+  background: #4f46e5;
+}
+
+.marcador-pulso--repartidor .marcador-pulso-anillo {
+  background: #4f46e5;
+}
+
+.marcador-pulso--restaurante .marcador-pulso-punto {
+  background: #18181b;
+}
+
+.marcador-pulso--restaurante .marcador-pulso-anillo {
+  background: #18181b;
+  animation: none;
+}
+
+@keyframes marcador-pulso-anim {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
 }
 </style>
