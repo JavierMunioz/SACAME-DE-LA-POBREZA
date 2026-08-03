@@ -5,6 +5,7 @@ import { Grid, List, Search } from '@element-plus/icons-vue'
 import { listarRestaurantes, type Restaurante } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
+import logoWordmark from '../../assets/brand/logo-wordmark.png'
 
 const restaurantes = ref<Restaurante[]>([])
 const busqueda = ref('')
@@ -78,7 +79,7 @@ onMounted(async () => {
     <header class="encabezado">
       <div class="marca">
         <span class="marca-icono">L</span>
-        <span class="marca-nombre">LagoPos</span>
+        <img :src="logoWordmark" alt="LagoPos" class="marca-logo" />
       </div>
       <nav class="nav-principal">
         <span class="nav-link nav-link--activo">
@@ -264,16 +265,15 @@ onMounted(async () => {
   font-size: 0.85rem;
 }
 
-.marca-nombre {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 0.9rem;
+.marca-logo {
+  height: 16px;
+  width: auto;
   display: none;
 }
 
 @media (min-width: 640px) {
-  .marca-nombre {
-    display: inline;
+  .marca-logo {
+    display: block;
   }
 }
 

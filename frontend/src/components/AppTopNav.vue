@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { KnifeFork, SwitchButton } from '@element-plus/icons-vue'
+import logoWordmark from '../assets/brand/logo-wordmark.png'
 
 defineProps<{
   subtitulo: string
@@ -15,7 +16,7 @@ const emit = defineEmits<{ salir: [] }>()
         <el-icon :size="16"><KnifeFork /></el-icon>
       </div>
       <div class="topnav-marca-textos">
-        <span class="topnav-marca-nombre">LagoPos</span>
+        <img :src="logoWordmark" alt="LagoPos" class="topnav-marca-logo" />
         <span class="topnav-marca-sub">{{ subtitulo }}</span>
       </div>
     </div>
@@ -87,10 +88,10 @@ const emit = defineEmits<{ salir: [] }>()
   }
 }
 
-.topnav-marca-nombre {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.topnav-marca-logo {
+  height: 18px;
+  width: auto;
+  display: block;
 }
 
 .topnav-marca-sub {

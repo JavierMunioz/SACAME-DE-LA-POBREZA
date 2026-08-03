@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { Connection, KnifeFork, Loading, SwitchButton, Warning } from '@element-plus/icons-vue'
 import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
+import logoWordmark from '../../assets/brand/logo-wordmark.png'
 
 // Mismo enfoque que la comanda del mesero: polling simple, sin
 // WebSockets todavía (ver Brain.md).
@@ -120,8 +121,8 @@ onUnmounted(() => {
         <div class="marca-icono">
           <el-icon :size="18"><KnifeFork /></el-icon>
         </div>
-        <h1>
-          <span class="marca-texto-completo">LagoPos </span>
+        <h1 class="titulo-marca">
+          <img :src="logoWordmark" alt="LagoPos" class="marca-texto-completo" />
           <span class="marca-acento">Cocina</span>
         </h1>
         <div class="separador" />
@@ -264,13 +265,21 @@ onUnmounted(() => {
   }
 }
 
+.titulo-marca {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .marca-texto-completo {
+  height: 17px;
+  width: auto;
   display: none;
 }
 
 @media (min-width: 640px) {
   .marca-texto-completo {
-    display: inline;
+    display: block;
   }
 }
 

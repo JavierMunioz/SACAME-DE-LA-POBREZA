@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KnifeFork } from '@element-plus/icons-vue'
 import { homeDeUsuario, useAuthStore } from '../stores/auth'
+import logoWordmark from '../assets/brand/logo-wordmark.png'
 
 const form = reactive({ email: '', password: '' })
 const recordar = ref(true)
@@ -34,7 +35,7 @@ async function enviar() {
       <div class="marca-icono">
         <el-icon :size="26"><KnifeFork /></el-icon>
       </div>
-      <h1 class="panel-marca-titulo">LagoPos</h1>
+      <img :src="logoWordmark" alt="LagoPos" class="panel-marca-logo" />
       <p class="panel-marca-texto">
         Reservas, mesas y pedidos en un solo lugar. Escaneá, pedí, servís, cerrá la mesa.
       </p>
@@ -146,12 +147,11 @@ async function enviar() {
   margin-bottom: var(--space-8);
 }
 
-.panel-marca-titulo {
-  color: white;
-  font-size: 2rem;
-  line-height: 1.2;
-  max-width: 12ch;
-  margin-bottom: var(--space-4);
+.panel-marca-logo {
+  height: 40px;
+  width: auto;
+  display: block;
+  margin-bottom: var(--space-6);
 }
 
 .panel-marca-texto {

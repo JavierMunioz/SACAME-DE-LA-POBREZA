@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-08-03] Logos reales de marca (wordmark + isotipo) reemplazan el texto/ícono placeholder
+El usuario dejó dos PNG generados en Descargas (`LagoPOS` wordmark metálico plateado+coral, y un isotipo abstracto tipo "ola/montaña" en los mismos colores). Ambos venían con fondo oscuro sólido de mockup 3D (no transparente pese a tener canal alfa) — se extrajo el fondo por color-key (luminancia + saturación vs. el gris de fondo casi uniforme) con Pillow, se recortó el sparkle decorativo y se comprimió (redimensionado a 700px de ancho, de ~580-850KB a ~75-200KB) antes de meterlos al proyecto.
+
+- Guardados en `frontend/src/assets/brand/`: `logo-wordmark.png` (recortado, transparente, optimizado) + `logo-wordmark-original.png` (fuente sin tocar), mismo patrón para `logo-mark.png`.
+- El wordmark reemplaza el texto "LagoPos" en los 5 lugares donde aparecía como texto plano: `AppTopNav.vue` (nav compartido de mesero/admin), `LoginView.vue` y `RegistroView.vue` (panel oscuro, título grande), `cliente/HomeView.vue` (nav claro), `cocina/HomeView.vue` (header, junto al texto "Cocina" que se mantiene aparte). Cada uno con su propio `height` fijo vía CSS según el tamaño del contexto (16-40px).
+- **El isotipo (`logo-mark.png`) no se usó todavía**: es una composición dispersa (tres piezas separadas — esquina plegada, dos barras, ola — spread en un canvas grande), no está diagramado como ícono compacto cuadrado. Intenté recortar solo la pieza de la esquina para el favicon/las cajitas de 32px de navbar y no cerraba bien (cortaba el triángulo coral). Se dejó el ícono vectorial simple (fork-in-box coral) que ya estaba en esas cajitas chicas y en el favicon — no se fuerza un asset a un espacio para el que no fue diseñado. Si el usuario quiere reemplazar también esas cajitas chicas, hace falta un ícono cuadrado dedicado (favicon-ready), no este isotipo grande.
+- Verificado en vivo (login, home cliente) con Playwright: logo se ve nítido a 16px y 40px de alto, colores consistentes con la paleta del brandbook. Typecheck y build limpios.
+
 ### [2026-08-03] Paleta de marca real (LagOrithme Brandbook) aplicada a toda la app
 El usuario dejó `desing style/-LAGORITHME -BRANDBOOK.pdf` con la identidad real de LagoPos. Página "Colorimetría" define 4 colores: Ink Black `#0e1524`, Deep Space Blue `#1f3143`, Vibrant Coral `#ff5555`, Silver `#a9a9a9`. La app venía con una paleta negro+indigo genérica (`#18181b` / `#4f46e5`) elegida sin brandbook — se reemplazó de raíz.
 
