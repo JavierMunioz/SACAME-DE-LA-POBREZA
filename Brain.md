@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-08-03] El isotipo real (segunda imagen del usuario) faltaba en todas las cajitas de marca chicas
+Reclamo directo del usuario mostrando de nuevo el isotipo ("ola/montaña" plateado+coral) — en la pasada anterior decidí no usarlo en los espacios cuadrados chicos (cajita de nav, favicon, letra de marca en cliente/cocina) porque la composición es dispersa y un recorte parcial se veía mal. Esa decisión fue mal recibida: el usuario quiere ESE logo específico usado, no que se le sustituya por criterio propio en los lugares donde "no calzaba perfecto".
+
+- Se usa `logo-mark.png` (ya con fondo removido de la pasada anterior) completo con `object-fit: contain` dentro de las cajas cuadradas existentes (no se fuerza más recorte parcial) — a esta escala (28-56px) la composición dispersa deja de ser un problema, se lee como un mark coherente.
+- Aplicado en las 5 cajitas de marca que quedaron vacías o con placeholder tras el fix anterior: `AppTopNav.vue` (nav de mesero/admin/cocina, cajita reintroducida), `LoginView.vue` y `RegistroView.vue` (cajita nueva arriba del wordmark, fondo `rgba(255,255,255,0.08)` para que se note sobre el panel oscuro), `cliente/HomeView.vue` (reemplaza la letra "L"), `cocina/HomeView.vue` (cajita reintroducida junto al wordmark).
+- **Favicon real generado por primera vez**: hasta ahora `favicon.ico` seguía siendo el ícono default del scaffold de Vue (nunca reemplazado, gap real que no se había notado). Se generó con Pillow desde `logo-mark.png`: fondo Ink Black `#0e1524` cuadrado + el mark centrado con padding, exportado a `.ico` multi-resolución (16/32/48) + PNG 180/192/512 (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`), enlazados en `index.html`. Verificado que se lee incluso a 32px (tamaño real de pestaña de navegador).
+- Verificado en vivo con Playwright (login, home cliente) y con `fetch()` que los assets de favicon responden 200 con el content-type correcto. Typecheck y build limpios.
+
 ### [2026-08-03] Fix: logo estirado + tenedor vectorial seguía compitiendo con el logo real
 Reporte en caliente del usuario apenas vio el login/registro: el wordmark salía visiblemente estirado, y arriba seguía apareciendo el viejo ícono de tenedor/cuchara en vez de solo el logo real.
 

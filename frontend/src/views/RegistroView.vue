@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import logoWordmark from '../assets/brand/logo-wordmark.png'
+import logoMark from '../assets/brand/logo-mark.png'
 
 const form = reactive({ nombre: '', email: '', password: '' })
 const cargando = ref(false)
@@ -37,6 +38,9 @@ async function enviar() {
 <template>
   <div class="pagina">
     <aside class="panel-marca">
+      <div class="marca-icono">
+        <img :src="logoMark" alt="" class="marca-icono-img" />
+      </div>
       <img :src="logoWordmark" alt="LagoPos" class="panel-marca-logo" />
       <p class="panel-marca-texto">
         Creá tu cuenta para reservar mesa con anticipación y llevar el historial de tus pedidos.
@@ -137,6 +141,26 @@ async function enviar() {
   .panel-marca {
     display: flex;
   }
+}
+
+.marca-icono {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  align-self: flex-start;
+  margin-bottom: var(--space-6);
+  overflow: hidden;
+}
+
+.marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+  box-sizing: border-box;
 }
 
 .panel-marca-logo {

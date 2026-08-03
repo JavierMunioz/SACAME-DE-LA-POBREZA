@@ -6,6 +6,7 @@ import { listarRestaurantes, type Restaurante } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
 import { imagenComida } from '../../utils/imagenesComida'
 import logoWordmark from '../../assets/brand/logo-wordmark.png'
+import logoMark from '../../assets/brand/logo-mark.png'
 
 const restaurantes = ref<Restaurante[]>([])
 const busqueda = ref('')
@@ -78,7 +79,9 @@ onMounted(async () => {
   <div class="pagina">
     <header class="encabezado">
       <div class="marca">
-        <span class="marca-icono">L</span>
+        <span class="marca-icono">
+          <img :src="logoMark" alt="" class="marca-icono-img" />
+        </span>
         <img :src="logoWordmark" alt="LagoPos" class="marca-logo" />
       </div>
       <nav class="nav-principal">
@@ -259,10 +262,15 @@ onMounted(async () => {
   height: 28px;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: white;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.85rem;
+  overflow: hidden;
+}
+
+.marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 3px;
+  box-sizing: border-box;
 }
 
 .marca-logo {

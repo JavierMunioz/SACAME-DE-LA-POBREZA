@@ -6,6 +6,7 @@ import { Connection, Loading, SwitchButton, Warning } from '@element-plus/icons-
 import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
 import logoWordmark from '../../assets/brand/logo-wordmark.png'
+import logoMark from '../../assets/brand/logo-mark.png'
 
 // Mismo enfoque que la comanda del mesero: polling simple, sin
 // WebSockets todavía (ver Brain.md).
@@ -118,6 +119,9 @@ onUnmounted(() => {
   <div class="pagina">
     <header class="encabezado">
       <div class="encabezado-izq">
+        <div class="marca-icono">
+          <img :src="logoMark" alt="" class="marca-icono-img" />
+        </div>
         <h1 class="titulo-marca">
           <img :src="logoWordmark" alt="LagoPos" class="marca-texto-completo" />
           <span class="marca-acento">Cocina</span>
@@ -260,6 +264,25 @@ onUnmounted(() => {
   .encabezado-izq {
     gap: var(--space-4);
   }
+}
+
+.marca-icono {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .titulo-marca {

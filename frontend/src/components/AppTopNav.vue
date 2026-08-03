@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { SwitchButton } from '@element-plus/icons-vue'
 import logoWordmark from '../assets/brand/logo-wordmark.png'
+import logoMark from '../assets/brand/logo-mark.png'
 
 defineProps<{
   subtitulo: string
@@ -12,6 +13,9 @@ const emit = defineEmits<{ salir: [] }>()
 <template>
   <header class="topnav">
     <div class="topnav-marca">
+      <div class="topnav-marca-icono">
+        <img :src="logoMark" alt="" class="topnav-marca-icono-img" />
+      </div>
       <div class="topnav-marca-textos">
         <img :src="logoWordmark" alt="LagoPos" class="topnav-marca-logo" />
         <span class="topnav-marca-sub">{{ subtitulo }}</span>
@@ -60,6 +64,25 @@ const emit = defineEmits<{ salir: [] }>()
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+}
+
+.topnav-marca-icono {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.topnav-marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .topnav-marca-textos {
