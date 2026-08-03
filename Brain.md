@@ -56,6 +56,15 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-08-03] Paleta de marca real (LagOrithme Brandbook) aplicada a toda la app
+El usuario dejó `desing style/-LAGORITHME -BRANDBOOK.pdf` con la identidad real de LagoPos. Página "Colorimetría" define 4 colores: Ink Black `#0e1524`, Deep Space Blue `#1f3143`, Vibrant Coral `#ff5555`, Silver `#a9a9a9`. La app venía con una paleta negro+indigo genérica (`#18181b` / `#4f46e5`) elegida sin brandbook — se reemplazó de raíz.
+
+- `design-system.css`: `--color-primary` → Ink Black, `--color-secondary` (antes indigo) → Vibrant Coral con su hover derivado y su soft-tint, `--text-primary` → Ink Black, `--text-tertiary` → Silver exacto del brandbook, sombras recalculadas sobre el nuevo negro. Nueva variable `--color-deep` (Deep Space Blue) para hover de botones primarios — antes usaba un gris genérico (`#27272a`) sin relación con la marca.
+- Todo lo que consume esas variables (botones, badges, textos, Element Plus retematizado) se actualizó solo, sin tocar cada componente — es el mismo patrón de tokens centralizados de siempre.
+- 3 archivos tenían el indigo hardcodeado en vez de la variable (no seguían el token): `SeguimientoPedidoView.vue` (marcadores del mapa Leaflet, viven en un `<style>` sin scope porque Leaflet arma el DOM con HTML crudo) y los gradientes radiales de fondo de `LoginView.vue`/`RegistroView.vue`. Se migraron a `var(--color-secondary)`/`var(--color-primary)` donde aplicaba, y a los valores RGB exactos del coral/deep-blue donde el `rgba()` no podía usar `var()` directo.
+- Colores de estado (éxito/advertencia/peligro verde-amarillo-rojo) no se tocaron — el brandbook no define esos, siguen siendo semánticos estándar, no de marca.
+- Verificado en vivo (login, cliente home) con Playwright: coral consistente en badges/links/checkboxes, Ink Black en botones primarios y marca, Deep Space Blue visible en el gradiente del panel de login. Typecheck y build limpios.
+
 ### [2026-07-31] Mapa en vivo del repartidor en el seguimiento del cliente
 Pedido del usuario: el "Ver ubicación en el mapa" (un link a Google Maps que abría en pestaña nueva) no alcanzaba — quería el mapa embebido en la propia vista, con el marcador "pintándose y despintándose" en cada actualización.
 

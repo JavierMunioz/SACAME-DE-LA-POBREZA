@@ -7,12 +7,13 @@
 
 :root {
   /* ---- Paleta (intacta) ---- */
-  --color-primary: #18181b;
+  --color-primary: #0e1524;
   --color-on-primary: #ffffff;
-  --color-secondary: #4f46e5;
-  --color-secondary-hover: #4338ca;
+  --color-secondary: #ff5555;
+  --color-secondary-hover: #e64545;
   --color-on-secondary: #ffffff;
-  --color-secondary-soft: #eef2ff;
+  --color-secondary-soft: #ffe9e9;
+  --color-deep: #1f3143;
 
   --color-success: #16a34a;
   --color-success-bg: #dcfce7;
@@ -32,9 +33,9 @@
   --surface-raised: #ffffff;
   --surface-muted: #f4f4f6;
 
-  --text-primary: #18181b;
+  --text-primary: #0e1524;
   --text-secondary: #52525b;
-  --text-tertiary: #a1a1aa;
+  --text-tertiary: #a9a9a9;
   --border-subtle: #ececef;
   --border-default: #e4e4e7;
 
@@ -64,14 +65,14 @@
   --radius-full: 9999px;
 
   /* ---- Sombras planas (Stripe/Linear: casi nada, solo separación) ---- */
-  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.04);
-  --shadow-md: 0 4px 12px rgba(24, 24, 27, 0.06);
-  --shadow-lg: 0 16px 32px rgba(24, 24, 27, 0.1);
+  --shadow-sm: 0 1px 2px rgba(14, 21, 36, 0.04);
+  --shadow-md: 0 4px 12px rgba(14, 21, 36, 0.06);
+  --shadow-lg: 0 16px 32px rgba(14, 21, 36, 0.1);
 
   /* ---- Soft UI: relieve de doble tono, acento puntual sobre tarjetas
      destacadas (no la base plana de toda la app). ---- */
-  --shadow-soft: -3px -3px 8px rgba(255, 255, 255, 0.8), 4px 4px 12px rgba(24, 24, 27, 0.06);
-  --shadow-soft-hover: -4px -4px 10px rgba(255, 255, 255, 0.85), 6px 6px 16px rgba(24, 24, 27, 0.09);
+  --shadow-soft: -3px -3px 8px rgba(255, 255, 255, 0.8), 4px 4px 12px rgba(14, 21, 36, 0.06);
+  --shadow-soft-hover: -4px -4px 10px rgba(255, 255, 255, 0.85), 6px 6px 16px rgba(14, 21, 36, 0.09);
   --highlight-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
@@ -245,8 +246,8 @@ button:active, .el-button:active { transform: scale(0.98); }
 .el-button--primary {
   --el-button-bg-color: var(--color-primary);
   --el-button-border-color: var(--color-primary);
-  --el-button-hover-bg-color: #27272a;
-  --el-button-hover-border-color: #27272a;
+  --el-button-hover-bg-color: var(--color-deep);
+  --el-button-hover-border-color: var(--color-deep);
   --el-button-active-bg-color: var(--color-primary);
 }
 

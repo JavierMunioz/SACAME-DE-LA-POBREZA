@@ -130,9 +130,9 @@ async function enviar() {
   padding: var(--space-16) var(--space-12);
   overflow: hidden;
   background:
-    radial-gradient(circle at 20% 20%, rgba(79, 70, 229, 0.35), transparent 45%),
-    radial-gradient(circle at 80% 0%, rgba(79, 70, 229, 0.2), transparent 40%),
-    radial-gradient(circle at 60% 90%, rgba(24, 24, 27, 0.4), transparent 50%),
+    radial-gradient(circle at 20% 20%, rgba(255, 85, 85, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(255, 85, 85, 0.2), transparent 40%),
+    radial-gradient(circle at 60% 90%, rgba(31, 49, 67, 0.5), transparent 50%),
     var(--color-primary);
 }
 

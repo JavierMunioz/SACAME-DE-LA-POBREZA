@@ -396,19 +396,19 @@ onUnmounted(() => {
 }
 
 .marcador-pulso--repartidor .marcador-pulso-punto {
-  background: #4f46e5;
+  background: var(--color-secondary);
 }
 
 .marcador-pulso--repartidor .marcador-pulso-anillo {
-  background: #4f46e5;
+  background: var(--color-secondary);
 }
 
 .marcador-pulso--restaurante .marcador-pulso-punto {
-  background: #18181b;
+  background: var(--color-primary);
 }
 
 .marcador-pulso--restaurante .marcador-pulso-anillo {
-  background: #18181b;
+  background: var(--color-primary);
   animation: none;
 }
 
