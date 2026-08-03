@@ -15,7 +15,7 @@ const emit = defineEmits<{ salir: [] }>()
         <el-icon :size="16"><KnifeFork /></el-icon>
       </div>
       <div class="topnav-marca-textos">
-        <span class="topnav-marca-nombre">Sacame de la Pobreza</span>
+        <span class="topnav-marca-nombre">LagoPos</span>
         <span class="topnav-marca-sub">{{ subtitulo }}</span>
       </div>
     </div>

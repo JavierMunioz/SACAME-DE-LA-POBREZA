@@ -121,7 +121,7 @@ onUnmounted(() => {
           <el-icon :size="18"><KnifeFork /></el-icon>
         </div>
         <h1>
-          <span class="marca-texto-completo">Sacame de la Pobreza </span>
+          <span class="marca-texto-completo">LagoPos </span>
           <span class="marca-acento">Cocina</span>
         </h1>
         <div class="separador" />

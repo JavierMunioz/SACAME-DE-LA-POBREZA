@@ -77,8 +77,8 @@ onMounted(async () => {
   <div class="pagina">
     <header class="encabezado">
       <div class="marca">
-        <span class="marca-icono">S</span>
-        <span class="marca-nombre">Sacame de la Pobreza</span>
+        <span class="marca-icono">L</span>
+        <span class="marca-nombre">LagoPos</span>
       </div>
       <nav class="nav-principal">
         <span class="nav-link nav-link--activo">

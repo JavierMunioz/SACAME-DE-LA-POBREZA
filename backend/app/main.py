@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import auth, facturas, mesas, pedidos, reservas, restaurantes
 
-app = FastAPI(title="Sacame de la Pobreza API")
+app = FastAPI(title="LagoPos API")
 
 app.add_middleware(
     CORSMiddleware,

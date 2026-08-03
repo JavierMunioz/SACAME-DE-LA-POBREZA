@@ -40,7 +40,7 @@ async function enviar() {
       <div class="marca-icono">
         <el-icon :size="26"><KnifeFork /></el-icon>
       </div>
-      <h1 class="panel-marca-titulo">Sacame de la Pobreza</h1>
+      <h1 class="panel-marca-titulo">LagoPos</h1>
       <p class="panel-marca-texto">
         Creá tu cuenta para reservar mesa con anticipación y llevar el historial de tus pedidos.
       </p>

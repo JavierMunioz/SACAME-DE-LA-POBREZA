@@ -34,7 +34,7 @@ async function enviar() {
       <div class="marca-icono">
         <el-icon :size="26"><KnifeFork /></el-icon>
       </div>
-      <h1 class="panel-marca-titulo">Sacame de la Pobreza</h1>
+      <h1 class="panel-marca-titulo">LagoPos</h1>
       <p class="panel-marca-texto">
         Reservas, mesas y pedidos en un solo lugar. Escaneá, pedí, servís, cerrá la mesa.
       </p>
