@@ -56,6 +56,13 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-08-03] Fix: logo estirado + tenedor vectorial seguía compitiendo con el logo real
+Reporte en caliente del usuario apenas vio el login/registro: el wordmark salía visiblemente estirado, y arriba seguía apareciendo el viejo ícono de tenedor/cuchara en vez de solo el logo real.
+
+- **Estiramiento (bug real de flexbox, no de la imagen):** `.panel-marca`/`.topnav-marca-textos` son `display:flex; flex-direction:column`. En un contenedor flex, `align-items: stretch` (el default) estira los hijos en el eje transversal — para `flex-direction:column` el eje transversal es el **ancho**, no el alto. Con `width:auto` en el `<img>`, el navegador lo interpretaba como "estirate a lo ancho del contenedor" (704px medido con Playwright) mientras el `height:40px` sí se respetaba — resultado: proporción real 3.05:1 renderizada como si fuera ~14:1. Fix: `align-self: flex-start` en el logo, que anula el stretch heredado y deja que el ancho se calcule por proporción real a partir del alto fijo. Verificado con `getComputedStyle`+`getBoundingClientRect` antes/después.
+- **Ícono de tenedor redundante:** quedaba de la versión anterior (antes de tener el logo real) en 4 lugares — `AppTopNav.vue` (nav compartido mesero/admin), `LoginView.vue`, `RegistroView.vue`, `cocina/HomeView.vue`. Se eliminó el `<div class="marca-icono">`/`KnifeFork` de los 4 y su CSS asociado, dejando el wordmark como única marca visible. En `AppTopNav.vue` esto también significó sacar el `display:none` por debajo de 640px que tenía `.topnav-marca-textos` (antes el ícono era el único elemento visible en mobile; ahora el logo real es lo que debe verse siempre, no solo desde tablet).
+- Typecheck limpio. Verificado en vivo con Playwright en login y registro (proporción correcta, sin ícono viejo). El navbar de mesero/admin no se pudo loguear para verificar visualmente (no había credencial a mano), pero usa exactamente el mismo patrón `align-self: flex-start` ya confirmado en login/registro — mismo fix, misma garantía.
+
 ### [2026-08-03] Logos reales de marca (wordmark + isotipo) reemplazan el texto/ícono placeholder
 El usuario dejó dos PNG generados en Descargas (`LagoPOS` wordmark metálico plateado+coral, y un isotipo abstracto tipo "ola/montaña" en los mismos colores). Ambos venían con fondo oscuro sólido de mockup 3D (no transparente pese a tener canal alfa) — se extrajo el fondo por color-key (luminancia + saturación vs. el gris de fondo casi uniforme) con Pillow, se recortó el sparkle decorativo y se comprimió (redimensionado a 700px de ancho, de ~580-850KB a ~75-200KB) antes de meterlos al proyecto.
 

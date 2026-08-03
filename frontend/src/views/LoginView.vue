@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KnifeFork } from '@element-plus/icons-vue'
 import { homeDeUsuario, useAuthStore } from '../stores/auth'
 import logoWordmark from '../assets/brand/logo-wordmark.png'
 
@@ -32,9 +31,6 @@ async function enviar() {
 <template>
   <div class="pagina">
     <aside class="panel-marca">
-      <div class="marca-icono">
-        <el-icon :size="26"><KnifeFork /></el-icon>
-      </div>
       <img :src="logoWordmark" alt="LagoPos" class="panel-marca-logo" />
       <p class="panel-marca-texto">
         Reservas, mesas y pedidos en un solo lugar. Escaneá, pedí, servís, cerrá la mesa.
@@ -136,22 +132,11 @@ async function enviar() {
   }
 }
 
-.marca-icono {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-md);
-  background: var(--color-secondary);
-  color: white;
-  margin-bottom: var(--space-8);
-}
-
 .panel-marca-logo {
-  height: 40px;
+  height: 52px;
   width: auto;
-  display: block;
-  margin-bottom: var(--space-6);
+  align-self: flex-start;
+  margin-bottom: var(--space-8);
 }
 
 .panel-marca-texto {

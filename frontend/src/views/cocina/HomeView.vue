@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Connection, KnifeFork, Loading, SwitchButton, Warning } from '@element-plus/icons-vue'
+import { Connection, Loading, SwitchButton, Warning } from '@element-plus/icons-vue'
 import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
 import logoWordmark from '../../assets/brand/logo-wordmark.png'
@@ -118,9 +118,6 @@ onUnmounted(() => {
   <div class="pagina">
     <header class="encabezado">
       <div class="encabezado-izq">
-        <div class="marca-icono">
-          <el-icon :size="18"><KnifeFork /></el-icon>
-        </div>
         <h1 class="titulo-marca">
           <img :src="logoWordmark" alt="LagoPos" class="marca-texto-completo" />
           <span class="marca-acento">Cocina</span>
@@ -281,16 +278,6 @@ onUnmounted(() => {
   .marca-texto-completo {
     display: block;
   }
-}
-
-.marca-icono {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: white;
 }
 
 .encabezado h1 {
