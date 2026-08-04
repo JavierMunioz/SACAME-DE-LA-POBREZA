@@ -52,9 +52,12 @@ def test_ocupar_mesa_sin_nombre_falla(client, restaurante_con_mesa):
     assert r.status_code == 422
 
 
-def test_mesero_no_puede_pedir_via_endpoint_de_pedidos(
+def test_mesero_puede_pedir_por_su_mesa(
     client, restaurante_con_mesa, mesero_autenticado
 ):
+    # El mesero puede tomar el pedido si el cliente no tiene forma de
+    # pedir desde su celular (ver Brain.md) — pero queda marcado como
+    # tomado por él, no como pedido directo de un cliente.
     r = client.post(
         "/pedidos",
         json={
@@ -62,5 +65,21 @@ def test_mesero_no_puede_pedir_via_endpoint_de_pedidos(
             "items": [{"menu_item_id": restaurante_con_mesa["menu_item"].id, "cantidad": 1}],
         },
         headers=mesero_autenticado["headers"],
+    )
+    assert r.status_code == 201
+    assert r.json()["nombre_invitado"] == "Tomado por Mesero fixture"
+    assert r.json()["cliente_id"] is None
+
+
+def test_cocina_no_puede_pedir_via_endpoint_de_pedidos(
+    client, restaurante_con_mesa, cocina_autenticado
+):
+    r = client.post(
+        "/pedidos",
+        json={
+            "mesa_id": restaurante_con_mesa["mesa"].id,
+            "items": [{"menu_item_id": restaurante_con_mesa["menu_item"].id, "cantidad": 1}],
+        },
+        headers=cocina_autenticado["headers"],
     )
     assert r.status_code == 403

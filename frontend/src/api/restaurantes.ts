@@ -1,11 +1,18 @@
 import { api } from './client'
 
+export interface Categoria {
+  id: number
+  nombre: string
+  orden: number
+}
+
 export interface MenuItem {
   id: number
   nombre: string
   descripcion: string | null
   precio: string
   disponible: boolean
+  categorias: Categoria[]
 }
 
 export interface MenuItemCreate {
@@ -13,17 +20,31 @@ export interface MenuItemCreate {
   descripcion?: string
   precio: number
   disponible?: boolean
+  categoria_ids?: number[]
 }
 
 export interface Restaurante {
   id: number
   nombre: string
   descripcion: string | null
+  categoria: string | null
   created_at: string
+  mesas_disponibles: boolean
 }
 
 export interface RestauranteConMenu extends Restaurante {
+  latitud: number | null
+  longitud: number | null
+  categorias_menu: Categoria[]
   menu: MenuItem[]
+}
+
+export interface RestauranteUpdate {
+  nombre?: string
+  descripcion?: string
+  categoria?: string
+  latitud?: number | null
+  longitud?: number | null
 }
 
 export interface Mesa {
@@ -34,6 +55,8 @@ export interface Mesa {
   estado: 'libre' | 'reservada' | 'ocupada'
   qr_generado_at: string
   qr_url: string
+  codigo_acceso: string | null
+  llamado_mesero: boolean
 }
 
 export interface PlatoVendido {
@@ -67,9 +90,69 @@ export async function obtenerRestaurante(id: number): Promise<RestauranteConMenu
   return data
 }
 
+export async function editarRestaurante(
+  id: number,
+  payload: RestauranteUpdate,
+): Promise<RestauranteConMenu> {
+  const { data } = await api.put<RestauranteConMenu>(`/restaurantes/${id}`, payload)
+  return data
+}
+
+export interface MenuItemUpdate {
+  nombre?: string
+  descripcion?: string
+  precio?: number
+  disponible?: boolean
+  categoria_ids?: number[]
+}
+
+export async function agregarItemMenu(
+  restauranteId: number,
+  payload: MenuItemCreate,
+): Promise<MenuItem> {
+  const { data } = await api.post<MenuItem>(`/restaurantes/${restauranteId}/menu`, payload)
+  return data
+}
+
+export async function editarItemMenu(
+  restauranteId: number,
+  itemId: number,
+  payload: MenuItemUpdate,
+): Promise<MenuItem> {
+  const { data } = await api.put<MenuItem>(
+    `/restaurantes/${restauranteId}/menu/${itemId}`,
+    payload,
+  )
+  return data
+}
+
+export async function crearCategoria(restauranteId: number, nombre: string): Promise<Categoria> {
+  const { data } = await api.post<Categoria>(`/restaurantes/${restauranteId}/categorias`, {
+    nombre,
+  })
+  return data
+}
+
+export async function editarCategoria(
+  restauranteId: number,
+  categoriaId: number,
+  payload: { nombre?: string; orden?: number },
+): Promise<Categoria> {
+  const { data } = await api.put<Categoria>(
+    `/restaurantes/${restauranteId}/categorias/${categoriaId}`,
+    payload,
+  )
+  return data
+}
+
+export async function eliminarCategoria(restauranteId: number, categoriaId: number): Promise<void> {
+  await api.delete(`/restaurantes/${restauranteId}/categorias/${categoriaId}`)
+}
+
 export async function crearRestaurante(payload: {
   nombre: string
   descripcion?: string
+  categoria?: string
   menu_inicial: MenuItemCreate[]
 }): Promise<RestauranteConMenu> {
   const { data } = await api.post<RestauranteConMenu>('/restaurantes', payload)
@@ -98,7 +181,7 @@ export function urlImagenQr(mesaId: number): string {
   return `${api.defaults.baseURL}/mesas/${mesaId}/qr.png`
 }
 
-export type RolPersonal = 'mesero' | 'cocina' | 'admin_restaurante'
+export type RolPersonal = 'mesero' | 'cocina' | 'admin_restaurante' | 'repartidor'
 
 export interface Personal {
   id: number

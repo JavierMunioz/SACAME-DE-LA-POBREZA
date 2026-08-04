@@ -1,25 +1,35 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Grid } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import {
+  agregarItemMenu,
+  crearCategoria,
   crearMesa,
   crearPersonal,
+  editarCategoria,
+  editarItemMenu,
+  editarRestaurante,
+  eliminarCategoria,
   listarMesas,
   listarPersonal,
   obtenerEstadisticas,
   obtenerRestaurante,
   regenerarQr,
+  type Categoria,
   type Estadisticas,
   type Mesa,
+  type MenuItem,
   type Personal,
   type RestauranteConMenu,
   type RolPersonal,
 } from '../../api/restaurantes'
+import { obtenerUbicacion } from '../../api/mesas'
+import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
 import { useAuthStore } from '../../stores/auth'
-import AppSidebar from '../../components/AppSidebar.vue'
+import AppTopNav from '../../components/AppTopNav.vue'
 
 const auth = useAuthStore()
 
@@ -35,6 +45,135 @@ const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 const form = reactive({ numero: 1, capacidad: 4 })
+
+const dialogoUbicacionAbierto = ref(false)
+const guardandoUbicacion = ref(false)
+const buscandoUbicacion = ref(false)
+const formUbicacion = reactive({ latitud: null as number | null, longitud: null as number | null })
+
+function abrirDialogoUbicacion() {
+  formUbicacion.latitud = restaurante.value?.latitud ?? null
+  formUbicacion.longitud = restaurante.value?.longitud ?? null
+  dialogoUbicacionAbierto.value = true
+}
+
+async function usarUbicacionActual() {
+  buscandoUbicacion.value = true
+  try {
+    const ubicacion = await obtenerUbicacion()
+    if (!ubicacion) {
+      ElMessage.error('No se pudo obtener la ubicación. Activá el permiso en el navegador.')
+      return
+    }
+    formUbicacion.latitud = ubicacion.lat
+    formUbicacion.longitud = ubicacion.lng
+  } finally {
+    buscandoUbicacion.value = false
+  }
+}
+
+async function guardarUbicacion() {
+  guardandoUbicacion.value = true
+  try {
+    const actualizado = await editarRestaurante(restauranteId, {
+      latitud: formUbicacion.latitud,
+      longitud: formUbicacion.longitud,
+    })
+    if (restaurante.value) {
+      restaurante.value.latitud = actualizado.latitud
+      restaurante.value.longitud = actualizado.longitud
+    }
+    dialogoUbicacionAbierto.value = false
+    ElMessage.success('Ubicación guardada')
+  } catch {
+    ElMessage.error('No se pudo guardar la ubicación')
+  } finally {
+    guardandoUbicacion.value = false
+  }
+}
+
+const dialogoMenuAbierto = ref(false)
+const guardandoMenu = ref(false)
+const itemMenuEditando = ref<MenuItem | null>(null)
+const formMenu = reactive({
+  nombre: '',
+  descripcion: '',
+  precio: 0,
+  disponible: true,
+  categoriaIds: [] as number[],
+})
+
+const dialogoCategoriaAbierto = ref(false)
+const guardandoCategoria = ref(false)
+const categoriaEditando = ref<Categoria | null>(null)
+const formCategoria = reactive({ nombre: '' })
+
+function abrirDialogoNuevaCategoria() {
+  categoriaEditando.value = null
+  formCategoria.nombre = ''
+  dialogoCategoriaAbierto.value = true
+}
+
+function abrirDialogoEditarCategoria(categoria: Categoria) {
+  categoriaEditando.value = categoria
+  formCategoria.nombre = categoria.nombre
+  dialogoCategoriaAbierto.value = true
+}
+
+async function guardarCategoria() {
+  if (!restaurante.value || !formCategoria.nombre.trim()) return
+  guardandoCategoria.value = true
+  try {
+    if (categoriaEditando.value) {
+      const actualizada = await editarCategoria(restauranteId, categoriaEditando.value.id, {
+        nombre: formCategoria.nombre,
+      })
+      const idx = restaurante.value.categorias_menu.findIndex((c) => c.id === actualizada.id)
+      if (idx !== -1) restaurante.value.categorias_menu[idx] = actualizada
+      // el nombre de la categoría también vive embebido en cada plato.
+      for (const item of restaurante.value.menu) {
+        const c = item.categorias.find((c) => c.id === actualizada.id)
+        if (c) c.nombre = actualizada.nombre
+      }
+      ElMessage.success('Categoría actualizada')
+    } else {
+      const nueva = await crearCategoria(restauranteId, formCategoria.nombre)
+      restaurante.value.categorias_menu.push(nueva)
+      ElMessage.success('Categoría creada')
+    }
+    dialogoCategoriaAbierto.value = false
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(status === 409 ? 'Ya existe una categoría con ese nombre' : 'No se pudo guardar la categoría')
+  } finally {
+    guardandoCategoria.value = false
+  }
+}
+
+async function borrarCategoria(categoria: Categoria) {
+  if (!restaurante.value) return
+  try {
+    await ElMessageBox.confirm(
+      `¿Borrar la categoría "${categoria.nombre}"? Los platos no se borran, solo dejan de estar agrupados ahí.`,
+      'Borrar categoría',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await eliminarCategoria(restauranteId, categoria.id)
+    restaurante.value.categorias_menu = restaurante.value.categorias_menu.filter(
+      (c) => c.id !== categoria.id,
+    )
+    for (const item of restaurante.value.menu) {
+      item.categorias = item.categorias.filter((c) => c.id !== categoria.id)
+    }
+    ElMessage.success('Categoría borrada')
+  } catch {
+    ElMessage.error('No se pudo borrar la categoría')
+  }
+}
 
 const dialogoPersonalAbierto = ref(false)
 const guardandoPersonal = ref(false)
@@ -96,6 +235,64 @@ async function guardarPersonal() {
   }
 }
 
+function abrirDialogoNuevoPlato() {
+  itemMenuEditando.value = null
+  formMenu.nombre = ''
+  formMenu.descripcion = ''
+  formMenu.precio = 0
+  formMenu.disponible = true
+  formMenu.categoriaIds = []
+  dialogoMenuAbierto.value = true
+}
+
+function abrirDialogoEditarPlato(item: MenuItem) {
+  itemMenuEditando.value = item
+  formMenu.nombre = item.nombre
+  formMenu.descripcion = item.descripcion ?? ''
+  formMenu.precio = Number(item.precio)
+  formMenu.disponible = item.disponible
+  formMenu.categoriaIds = item.categorias.map((c) => c.id)
+  dialogoMenuAbierto.value = true
+}
+
+async function guardarPlato() {
+  if (!restaurante.value) return
+  guardandoMenu.value = true
+  try {
+    if (itemMenuEditando.value) {
+      const actualizado = await editarItemMenu(restauranteId, itemMenuEditando.value.id, {
+        nombre: formMenu.nombre,
+        descripcion: formMenu.descripcion || undefined,
+        precio: formMenu.precio,
+        disponible: formMenu.disponible,
+        categoria_ids: formMenu.categoriaIds,
+      })
+      const idx = restaurante.value.menu.findIndex((m) => m.id === actualizado.id)
+      if (idx !== -1) restaurante.value.menu[idx] = actualizado
+      ElMessage.success('Plato actualizado')
+    } else {
+      const nuevo = await agregarItemMenu(restauranteId, {
+        nombre: formMenu.nombre,
+        descripcion: formMenu.descripcion || undefined,
+        precio: formMenu.precio,
+        disponible: formMenu.disponible,
+        categoria_ids: formMenu.categoriaIds,
+      })
+      restaurante.value.menu.push(nuevo)
+      ElMessage.success('Plato agregado')
+    }
+    dialogoMenuAbierto.value = false
+  } catch {
+    ElMessage.error('No se pudo guardar el plato')
+  } finally {
+    guardandoMenu.value = false
+  }
+}
+
+const gruposMenuAdmin = computed(() =>
+  restaurante.value ? agruparMenuPorCategoria(restaurante.value.menu) : [],
+)
+
 const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
   libre: 'Libre',
   reservada: 'Reservada',
@@ -106,6 +303,7 @@ const etiquetaRol: Record<RolPersonal, string> = {
   mesero: 'Mesero',
   cocina: 'Cocina',
   admin_restaurante: 'Admin de restaurante',
+  repartidor: 'Repartidor',
 }
 
 async function guardarMesa() {
@@ -161,15 +359,23 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="layout">
-    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+  <div class="pagina">
+    <AppTopNav
+      :subtitulo="auth.usuario?.rol === 'admin_restaurante' ? 'Admin de restaurante' : 'Admin General'"
+      @salir="cerrarSesion"
+    >
       <template #nav>
-        <button type="button" class="nav-item" @click="volver">
-          <el-icon :size="18"><Grid /></el-icon>
+        <button
+          v-if="auth.usuario?.rol === 'admin_general'"
+          type="button"
+          class="nav-item"
+          @click="volver"
+        >
+          <el-icon :size="16"><Grid /></el-icon>
           <span>Restaurantes</span>
         </button>
       </template>
-    </AppSidebar>
+    </AppTopNav>
 
     <main class="contenido-principal">
     <div v-if="cargando" class="contenido">
@@ -181,6 +387,16 @@ onUnmounted(() => {
         <div>
           <h1>{{ restaurante.nombre }}</h1>
           <p v-if="restaurante.descripcion" class="descripcion">{{ restaurante.descripcion }}</p>
+          <p class="estado-ubicacion">
+            {{
+              restaurante.latitud !== null
+                ? 'Ubicación configurada — el QR exige estar en el local para ocupar mesa'
+                : 'Sin ubicación configurada — cualquiera puede ocupar una mesa escaneando el QR desde donde sea'
+            }}
+            <button type="button" class="link-editar-ubicacion" @click="abrirDialogoUbicacion">
+              {{ restaurante.latitud !== null ? 'Editar' : 'Configurar' }}
+            </button>
+          </p>
         </div>
         <el-button type="primary" size="large" @click="abrirDialogo">Nueva mesa</el-button>
       </div>
@@ -236,14 +452,49 @@ onUnmounted(() => {
       </div>
 
       <section class="seccion">
-        <h2>Menú</h2>
+        <div class="encabezado-seccion">
+          <h2>Categorías del menú</h2>
+          <el-button size="small" @click="abrirDialogoNuevaCategoria">Nueva categoría</el-button>
+        </div>
+        <el-empty
+          v-if="restaurante.categorias_menu.length === 0"
+          description="Sin categorías — el menú se muestra en una sola lista"
+          :image-size="48"
+        />
+        <div v-else class="lista-chips-categoria">
+          <span v-for="categoria in restaurante.categorias_menu" :key="categoria.id" class="chip-categoria">
+            {{ categoria.nombre }}
+            <button type="button" class="boton-chip" @click="abrirDialogoEditarCategoria(categoria)">✎</button>
+            <button type="button" class="boton-chip" @click="borrarCategoria(categoria)">✕</button>
+          </span>
+        </div>
+      </section>
+
+      <section class="seccion">
+        <div class="encabezado-seccion">
+          <h2>Menú</h2>
+          <el-button size="small" @click="abrirDialogoNuevoPlato">Agregar plato</el-button>
+        </div>
         <el-empty v-if="restaurante.menu.length === 0" description="Sin platos todavía" />
-        <ul v-else class="lista-menu">
-          <li v-for="item in restaurante.menu" :key="item.id">
-            <span>{{ item.nombre }}</span>
-            <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
-          </li>
-        </ul>
+        <template v-else>
+          <div v-for="grupo in gruposMenuAdmin" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria-admin">
+            <h3 v-if="gruposMenuAdmin.length > 1" class="titulo-categoria-admin">
+              {{ grupo.categoria?.nombre ?? 'Sin categoría' }}
+            </h3>
+            <ul class="lista-menu">
+              <li v-for="item in grupo.items" :key="item.id">
+                <span class="fila-plato-nombre">
+                  {{ item.nombre }}
+                  <el-tag v-if="!item.disponible" type="info" size="small">No disponible</el-tag>
+                </span>
+                <span class="fila-plato-acciones">
+                  <span class="precio">${{ Number(item.precio).toLocaleString('es-CO') }}</span>
+                  <el-button size="small" text @click="abrirDialogoEditarPlato(item)">Editar</el-button>
+                </span>
+              </li>
+            </ul>
+          </div>
+        </template>
       </section>
 
       <section class="seccion">
@@ -306,6 +557,93 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="dialogoMenuAbierto"
+      :title="itemMenuEditando ? 'Editar plato' : 'Nuevo plato'"
+      width="380px"
+    >
+      <el-form :model="formMenu" label-position="top">
+        <el-form-item label="Nombre">
+          <el-input v-model="formMenu.nombre" />
+        </el-form-item>
+        <el-form-item label="Descripción">
+          <el-input v-model="formMenu.descripcion" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="Precio">
+          <el-input-number v-model="formMenu.precio" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="Disponible">
+          <el-switch v-model="formMenu.disponible" />
+        </el-form-item>
+        <el-form-item label="Categorías">
+          <el-select v-model="formMenu.categoriaIds" multiple style="width: 100%" placeholder="Ninguna">
+            <el-option
+              v-for="categoria in restaurante?.categorias_menu ?? []"
+              :key="categoria.id"
+              :label="categoria.nombre"
+              :value="categoria.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoMenuAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoMenu" @click="guardarPlato">
+          Guardar
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="dialogoCategoriaAbierto"
+      :title="categoriaEditando ? 'Editar categoría' : 'Nueva categoría'"
+      width="340px"
+    >
+      <el-form :model="formCategoria" label-position="top">
+        <el-form-item label="Nombre">
+          <el-input v-model="formCategoria.nombre" placeholder="ej. Entradas" @keyup.enter="guardarCategoria" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogoCategoriaAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoCategoria" @click="guardarCategoria">
+          Guardar
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoUbicacionAbierto" title="Ubicación del restaurante" width="380px">
+      <p class="texto-ayuda-ubicacion">
+        Si configurás la ubicación real del local, el QR de las mesas va a exigir que quien
+        escanea esté físicamente cerca para poder ocupar una mesa — evita que alguien use una
+        foto del QR desde otro lado.
+      </p>
+      <el-button :loading="buscandoUbicacion" style="width: 100%; margin-bottom: 16px" @click="usarUbicacionActual">
+        Usar mi ubicación actual
+      </el-button>
+      <el-form :model="formUbicacion" label-position="top">
+        <el-form-item label="Latitud">
+          <el-input-number v-model="formUbicacion.latitud" :precision="6" :step="0.0001" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="Longitud">
+          <el-input-number v-model="formUbicacion.longitud" :precision="6" :step="0.0001" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button
+          v-if="formUbicacion.latitud !== null"
+          text
+          @click="formUbicacion.latitud = null; formUbicacion.longitud = null"
+        >
+          Quitar ubicación
+        </el-button>
+        <el-button @click="dialogoUbicacionAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="guardandoUbicacion" @click="guardarUbicacion">
+          Guardar
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="dialogoPersonalAbierto" title="Nueva cuenta de personal" width="380px">
       <el-form :model="formPersonal" label-position="top">
         <el-form-item label="Nombre">
@@ -321,6 +659,7 @@ onUnmounted(() => {
           <el-select v-model="formPersonal.rol" style="width: 100%">
             <el-option label="Mesero" value="mesero" />
             <el-option label="Cocina" value="cocina" />
+            <el-option label="Repartidor" value="repartidor" />
             <el-option label="Admin de restaurante" value="admin_restaurante" />
           </el-select>
         </el-form-item>
@@ -336,34 +675,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.layout {
+.pagina {
   min-height: 100dvh;
+  background: var(--surface-sunken);
 }
 
 .contenido-principal {
-  margin-left: var(--sidebar-width);
   min-height: 100dvh;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  background: none;
-  border: none;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-standard);
-}
-
-.nav-item:hover {
-  background: var(--surface-muted);
 }
 
 .contenido {
@@ -374,6 +692,7 @@ onUnmounted(() => {
 
 .hero-restaurante {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--space-4);
@@ -389,6 +708,31 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
+.estado-ubicacion {
+  margin-top: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.link-editar-ubicacion {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: var(--space-1);
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.texto-ayuda-ubicacion {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+}
+
 .seccion {
   margin-bottom: var(--space-10);
 }
@@ -399,8 +743,10 @@ onUnmounted(() => {
 
 .encabezado-seccion {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
@@ -430,6 +776,62 @@ onUnmounted(() => {
 .precio {
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.fila-plato-nombre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fila-plato-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.lista-chips-categoria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip-categoria {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  background: var(--surface-muted);
+  border-radius: var(--radius-full);
+  font-size: 0.825rem;
+  font-weight: 500;
+}
+
+.boton-chip {
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.boton-chip:hover {
+  color: var(--text-primary);
+}
+
+.grupo-categoria-admin + .grupo-categoria-admin {
+  margin-top: var(--space-6);
+}
+
+.titulo-categoria-admin {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
 }
 
 .grid-qr {
@@ -488,43 +890,36 @@ onUnmounted(() => {
 }
 
 /* ---- Dashboard: capacidad / revenue / hot items ---- */
-/* Bento real: 3 métricas → 3 celdas (1 grande + 2 apiladas), no tres
-   tarjetas idénticas en fila. La celda con más contenido (la lista de
-   platos) se lleva el espacio grande. */
+/* Mobile-first: base = todo apilado en una columna, legible en celular.
+   Bento real (1 celda grande + 2 apiladas) recién a partir de pantalla
+   ancha — la celda con más contenido (la lista de platos) se lleva el
+   espacio grande. */
 .grid-dashboard {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-5);
   margin-bottom: var(--space-10);
 }
 
-.celda-hot-items {
-  grid-column: 1;
-  grid-row: 1 / 3;
-}
-
-.celda-capacidad {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.celda-revenue {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-@media (max-width: 860px) {
+@media (min-width: 861px) {
   .grid-dashboard {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-rows: 1fr 1fr;
   }
 
-  .celda-hot-items,
-  .celda-capacidad,
-  .celda-revenue {
+  .celda-hot-items {
     grid-column: 1;
-    grid-row: auto;
+    grid-row: 1 / 3;
+  }
+
+  .celda-capacidad {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .celda-revenue {
+    grid-column: 2;
+    grid-row: 2;
   }
 }
 

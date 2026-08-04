@@ -25,7 +25,7 @@ class PersonalCreate(BaseModel):
     nombre: str
     email: EmailStr
     password: str
-    rol: Literal[Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE]
+    rol: Literal[Rol.MESERO, Rol.COCINA, Rol.ADMIN_RESTAURANTE, Rol.REPARTIDOR]
 
 
 class Token(BaseModel):

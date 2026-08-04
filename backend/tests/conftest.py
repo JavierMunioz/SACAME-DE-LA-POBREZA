@@ -7,6 +7,7 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.main import app
 from app.models import (
+    CategoriaMenu,
     Factura,
     ItemPedido,
     MenuItem,
@@ -18,6 +19,7 @@ from app.models import (
     SesionMesa,
     Usuario,
 )
+from app.models.categoria_menu import menu_item_categoria
 
 
 @pytest.fixture
@@ -74,15 +76,41 @@ def restaurante_con_mesa():
     # Borrar primero lo que depende de la mesa (reservas, sesiones,
     # pedidos/items), si no la FK bloquea el delete de mesa y, más tarde,
     # el de usuarios.
-    pedido_ids = [p.id for p in db.query(Pedido).filter(Pedido.mesa_id == mesa.id).all()]
+    # Por restaurante_id, no solo mesa_id: un pedido de domicilio no tiene
+    # mesa pero sí queda con este restaurante de test, y también hay que
+    # limpiarlo o rompe el DELETE de usuarios más abajo.
+    pedido_ids = [
+        p.id for p in db.query(Pedido).filter(Pedido.restaurante_id == restaurante.id).all()
+    ]
     if pedido_ids:
         db.query(ItemPedido).filter(ItemPedido.pedido_id.in_(pedido_ids)).delete(
             synchronize_session=False
         )
         db.query(Pedido).filter(Pedido.id.in_(pedido_ids)).delete(synchronize_session=False)
     db.query(SesionMesa).filter(SesionMesa.mesa_id == mesa.id).delete()
-    db.query(Factura).filter(Factura.mesa_id == mesa.id).delete()
+    # Por mesa_id o restaurante_id: una prefactura de domicilio no tiene
+    # mesa (igual que el pedido que la generó).
+    db.query(Factura).filter(
+        (Factura.mesa_id == mesa.id) | (Factura.restaurante_id == restaurante.id)
+    ).delete(synchronize_session=False)
     db.query(Reserva).filter(Reserva.mesa_id == mesa.id).delete()
+    # Tabla puente ítem-categoría: un DELETE en bloque (Query.delete) no
+    # sigue la relación muchos-a-muchos, hay que vaciarla a mano antes de
+    # borrar ítems y categorías o la FK bloquea el resto del cleanup.
+    item_ids = [
+        i.id for i in db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).all()
+    ]
+    categoria_ids = [
+        c.id
+        for c in db.query(CategoriaMenu).filter(CategoriaMenu.restaurante_id == restaurante.id).all()
+    ]
+    db.execute(
+        menu_item_categoria.delete().where(
+            menu_item_categoria.c.menu_item_id.in_(item_ids)
+            | menu_item_categoria.c.categoria_id.in_(categoria_ids)
+        )
+    )
+    db.query(CategoriaMenu).filter(CategoriaMenu.restaurante_id == restaurante.id).delete()
     db.query(MenuItem).filter(MenuItem.restaurante_id == restaurante.id).delete()
     db.query(Mesa).filter(Mesa.restaurante_id == restaurante.id).delete()
     # Personal (mesero/cocina/admin_restaurante) creado para este restaurante
@@ -151,6 +179,28 @@ def cocina_autenticado(client, restaurante_con_mesa):
     login = client.post("/auth/login", data={"username": email, "password": "clave12345"})
     token = login.json()["access_token"]
     return {"token": token, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+@pytest.fixture
+def repartidor_autenticado(client, restaurante_con_mesa):
+    email = "repartidor-fixture@sacame-tests.dev"
+    db = SessionLocal()
+    usuario = Usuario(
+        nombre="Repartidor fixture",
+        email=email,
+        password_hash=hash_password("clave12345"),
+        rol=Rol.REPARTIDOR,
+        restaurante_id=restaurante_con_mesa["restaurante"].id,
+    )
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    usuario_id = usuario.id
+    db.close()
+
+    login = client.post("/auth/login", data={"username": email, "password": "clave12345"})
+    token = login.json()["access_token"]
+    return {"token": token, "usuario_id": usuario_id, "headers": {"Authorization": f"Bearer {token}"}}
 
 
 @pytest.fixture

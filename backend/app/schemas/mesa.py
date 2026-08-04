@@ -24,6 +24,13 @@ class MesaOut(BaseModel):
     estado: Literal["libre", "reservada", "ocupada"]
     qr_generado_at: datetime
     qr_url: str
+    # Código de 4 dígitos de la sesión activa (null si no está ocupada).
+    # Lo necesita el mesero para poder decírselo al cliente que quiera
+    # sumarse desde su celular después de una apertura manual.
+    codigo_acceso: str | None = None
+    # True si la sesión activa tocó "Llamar al mesero" y todavía no se
+    # atendió. Null/false si la mesa no está ocupada.
+    llamado_mesero: bool = False
 
 
 class SesionMesaOut(BaseModel):
@@ -44,6 +51,18 @@ class OcuparMesaRequest(BaseModel):
     qr_token: str
     nombre_invitado: str | None = None
     reserva_id: int | None = None
+    # Ubicación del dispositivo al momento de ocupar (ver Brain.md: QR
+    # fotografiado y usado a distancia). Solo se exige si el restaurante
+    # configuró su propia latitud/longitud.
+    lat: float | None = None
+    lng: float | None = None
+
+
+class OcuparMesaStaffRequest(BaseModel):
+    """Apertura manual por mesero/admin: sin QR, para sentar a alguien
+    que no puede o no quiere usar el celular (ver Brain.md)."""
+
+    nombre_invitado: str | None = None
 
 
 class UnirseMesaRequest(BaseModel):
@@ -55,6 +74,8 @@ class MesaQrInfo(BaseModel):
     mesa_id: int
     restaurante_id: int
     restaurante_nombre: str
+    restaurante_descripcion: str | None
+    restaurante_categoria: str | None
     numero: int
     capacidad: int
     reserva_propia: ReservaOut | None
@@ -67,4 +88,9 @@ class MesaQrInfo(BaseModel):
     # este QR — el frontend debe pedir el código de 4 dígitos en vez de
     # mostrar el menú directamente.
     requiere_codigo: bool
+    # True si el restaurante configuró su ubicación real: el frontend debe
+    # pedir permiso de geolocalización antes de intentar ocupar la mesa
+    # (ver Brain.md). False = no pedir permiso, no rompe restaurantes sin
+    # ubicación configurada.
+    requiere_ubicacion: bool
     menu: list[MenuItemOut]

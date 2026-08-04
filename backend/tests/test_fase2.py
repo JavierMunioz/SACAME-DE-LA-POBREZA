@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+from app.core.database import SessionLocal
+from app.models import Reserva
+
 
 def test_reserva_y_conflicto_doble_reserva(client, restaurante_con_mesa, cliente_autenticado):
     mesa_id = restaurante_con_mesa["mesa"].id
@@ -60,11 +63,21 @@ def test_canje_qr_con_reserva_propia(client, restaurante_con_mesa, cliente_auten
     token = restaurante_con_mesa["mesa"].qr_token
     ahora = datetime.now(timezone.utc)
 
-    client.post(
-        "/reservas",
-        json={"mesa_id": mesa_id, "inicio": ahora.isoformat(), "duracion_minutos": 90},
-        headers=cliente_autenticado["headers"],
+    # Se crea directo en la base (no vía POST /reservas): la regla de 2h
+    # de anticipación impediría reservar "para ahora" desde la API, pero
+    # acá lo que se prueba es la ventana de check-in en /mesas/qr, no la
+    # regla de anticipación.
+    db = SessionLocal()
+    db.add(
+        Reserva(
+            mesa_id=mesa_id,
+            cliente_id=cliente_autenticado["usuario_id"],
+            inicio=ahora,
+            duracion_minutos=90,
+        )
     )
+    db.commit()
+    db.close()
 
     r = client.get(f"/mesas/qr/{token}", headers=cliente_autenticado["headers"])
     data = r.json()

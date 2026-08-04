@@ -2,16 +2,22 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft, Bell, Check, InfoFilled, Search, ShoppingBag, Grid } from '@element-plus/icons-vue'
 import {
   canjearQr,
+  llamarMesero as llamarMeseroApi,
+  misPedidosDeLaMesa,
+  obtenerUbicacion,
   ocuparMesa,
   unirseAMesa,
   urlWsCarrito,
   type MesaQrInfo,
   type SesionMesa,
 } from '../api/mesas'
-import { crearPedido } from '../api/pedidos'
+import { crearPedido, type Pedido } from '../api/pedidos'
 import { useAuthStore } from '../stores/auth'
+import { agruparMenuPorCategoria } from '../utils/menuCategorias'
+import { imagenComida } from '../utils/imagenesComida'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +34,11 @@ const nombreInput = ref('')
 const codigoInput = ref('')
 const errorReclamo = ref('')
 
+const busqueda = ref('')
+const infoAbierta = ref(false)
+const llamandoMesero = ref(false)
+const meseroAvisado = ref(false)
+
 // carrito: espejo local del carrito compartido — lo actualiza el
 // WebSocket, no se muta a mano (así todos los dispositivos de la mesa
 // ven siempre los mismos números).
@@ -36,7 +47,19 @@ const observaciones = reactive<Record<number, string>>({})
 
 const esDueno = computed(() => !!sesion.value?.token_dueno)
 
+const misPedidos = ref<Pedido[]>([])
+const etiquetaEstadoPedido: Record<Pedido['estado'], string> = {
+  pendiente: 'Pendiente',
+  confirmado: 'Confirmado',
+  preparando: 'Preparando',
+  listo: 'Listo',
+  en_camino: 'En camino',
+  entregado: 'Entregado',
+  cancelado: 'Cancelado',
+}
+
 let ws: WebSocket | null = null
+let intervaloPedidos: ReturnType<typeof setInterval> | null = null
 
 function claveSesion(mesaId: number) {
   return `sesion-mesa-${mesaId}`
@@ -79,6 +102,31 @@ function desconectarCarritoEnVivo() {
   ws = null
 }
 
+// Estado de los pedidos ya enviados: el invitado sin cuenta no tiene login
+// para pegarle a /pedidos, pero con el token de su sesión de mesa alcanza
+// para ver por dónde va lo que pidió (ver Brain.md — feedback: "no sé por
+// dónde va mi pedido"). Polling en vez de WS: mismo patrón que el resto
+// del software para reflejar cambios de estado.
+async function cargarMisPedidos() {
+  if (!info.value || !sesion.value) return
+  try {
+    misPedidos.value = await misPedidosDeLaMesa(info.value.mesa_id, sesion.value.token)
+  } catch {
+    // silencioso: no tapar la pantalla por un polling fallido
+  }
+}
+
+function iniciarPollingPedidos() {
+  detenerPollingPedidos()
+  cargarMisPedidos()
+  intervaloPedidos = setInterval(cargarMisPedidos, 5000)
+}
+
+function detenerPollingPedidos() {
+  if (intervaloPedidos) clearInterval(intervaloPedidos)
+  intervaloPedidos = null
+}
+
 function enviarCambioItem(menuItemId: number, cantidad: number) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return
   ws.send(
@@ -113,12 +161,34 @@ async function cargar() {
     // es de una visita anterior ya cerrada — no sirve, se descarta.
     sesion.value = info.value.requiere_codigo || guardada ? guardada : null
     if (!info.value.requiere_codigo && guardada) borrarSesion(info.value.mesa_id)
-    if (sesion.value) conectarCarritoEnVivo(info.value.mesa_id, sesion.value.token)
+    if (sesion.value) {
+      conectarCarritoEnVivo(info.value.mesa_id, sesion.value.token)
+      iniciarPollingPedidos()
+    }
   } catch {
     errorToken.value = true
   } finally {
     cargando.value = false
   }
+}
+
+// Si el restaurante configuró su ubicación real, hay que pedir permiso de
+// geolocalización antes de ocupar (ver Brain.md: QR fotografiado y usado
+// a distancia). Si el restaurante no la configuró, no se pide nada.
+// TEMPORAL: verificación de ubicación desactivada (junto con la del
+// backend en mesas.py) para poder probar desde otro dispositivo en la
+// red sin estar físicamente en el restaurante. Reactivar antes de
+// producción descomentando el cuerpo original de abajo.
+async function ubicacionParaOcupar(): Promise<{ lat: number; lng: number } | undefined> {
+  return undefined
+  // if (!info.value?.requiere_ubicacion) return undefined
+  // const ubicacion = await obtenerUbicacion()
+  // if (!ubicacion) {
+  //   errorReclamo.value =
+  //     'Necesitamos tu ubicación para abrir la mesa. Activá la ubicación del navegador e intentá de nuevo.'
+  //   throw new Error('sin-ubicacion')
+  // }
+  // return ubicacion
 }
 
 async function reclamarComoInvitado() {
@@ -127,25 +197,32 @@ async function reclamarComoInvitado() {
     errorReclamo.value = 'Necesitamos tu nombre para abrir la mesa'
     return
   }
-  await reclamar(() =>
-    ocuparMesa(info.value!.mesa_id, route.query.token as string, {
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, {
       nombreInvitado: nombreInput.value,
-    }),
-  )
+      ...ubicacion,
+    })
+  })
 }
 
 async function reclamarComoClienteLogueado() {
   if (!info.value) return
-  await reclamar(() => ocuparMesa(info.value!.mesa_id, route.query.token as string, {}))
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, { ...ubicacion })
+  })
 }
 
 async function confirmarLlegada() {
   if (!info.value?.reserva_propia) return
-  await reclamar(() =>
-    ocuparMesa(info.value!.mesa_id, route.query.token as string, {
+  await reclamar(async () => {
+    const ubicacion = await ubicacionParaOcupar()
+    return ocuparMesa(info.value!.mesa_id, route.query.token as string, {
       reservaId: info.value!.reserva_propia!.id,
-    }),
-  )
+      ...ubicacion,
+    })
+  })
 }
 
 async function unirseConCodigo() {
@@ -166,9 +243,21 @@ async function reclamar(accion: () => Promise<SesionMesa>) {
     const s = await accion()
     sesion.value = s
     guardarSesion(s)
-    if (info.value) conectarCarritoEnVivo(info.value.mesa_id, s.token)
-  } catch {
-    errorReclamo.value = 'No se pudo completar la acción. Puede que alguien se te haya adelantado — recargá la página.'
+    if (info.value) {
+      conectarCarritoEnVivo(info.value.mesa_id, s.token)
+      iniciarPollingPedidos()
+    }
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'sin-ubicacion') {
+      // el mensaje específico ya quedó seteado en ubicacionParaOcupar.
+    } else {
+      const respuesta = (e as { response?: { status?: number; data?: { detail?: string } } })
+        ?.response
+      errorReclamo.value =
+        respuesta?.status === 403 && respuesta.data?.detail
+          ? respuesta.data.detail
+          : 'No se pudo completar la acción. Puede que alguien se te haya adelantado — recargá la página.'
+    }
   } finally {
     reclamando.value = false
   }
@@ -183,6 +272,26 @@ function restar(menuItemId: number) {
   enviarCambioItem(menuItemId, carrito[menuItemId] - 1)
 }
 
+const menuFiltrado = computed(() => {
+  if (!info.value) return []
+  const q = busqueda.value.trim().toLowerCase()
+  if (!q) return info.value.menu
+  return info.value.menu.filter(
+    (item) =>
+      item.nombre.toLowerCase().includes(q) || (item.descripcion ?? '').toLowerCase().includes(q),
+  )
+})
+
+const gruposMenu = computed(() => agruparMenuPorCategoria(menuFiltrado.value))
+
+function claveGrupo(id: number | undefined): string {
+  return id !== undefined ? `categoria-${id}` : 'categoria-otros'
+}
+
+function irACategoria(id: number | undefined) {
+  document.getElementById(claveGrupo(id))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const totalItems = computed(() => Object.values(carrito).reduce((a, b) => a + b, 0))
 
 const totalPrecio = computed(() => {
@@ -191,6 +300,16 @@ const totalPrecio = computed(() => {
     const item = info.value!.menu.find((m) => m.id === Number(menuItemId))
     return suma + (item ? Number(item.precio) * cantidad : 0)
   }, 0)
+})
+
+const itemsDelCarrito = computed(() => {
+  if (!info.value) return []
+  return Object.entries(carrito)
+    .filter(([, cantidad]) => cantidad > 0)
+    .map(([menuItemId, cantidad]) => {
+      const item = info.value!.menu.find((m) => m.id === Number(menuItemId))
+      return { id: Number(menuItemId), nombre: item?.nombre ?? '', cantidad, precio: item ? Number(item.precio) : 0 }
+    })
 })
 
 async function enviarPedido() {
@@ -205,13 +324,14 @@ async function enviarPedido() {
     await crearPedido(info.value.mesa_id, items, sesion.value.token_dueno)
     ElMessage.success('Pedido enviado a la cocina')
     Object.keys(carrito).forEach((k) => delete carrito[Number(k)])
-    router.push('/cliente')
+    cargarMisPedidos()
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status
     if (status === 401 && info.value) {
       borrarSesion(info.value.mesa_id)
       sesion.value = null
       desconectarCarritoEnVivo()
+      detenerPollingPedidos()
       ElMessage.error('Tu sesión de mesa venció. Volvé a abrir o unirte a la mesa.')
     } else {
       ElMessage.error('No se pudo enviar el pedido')
@@ -221,8 +341,33 @@ async function enviarPedido() {
   }
 }
 
+async function llamarMesero() {
+  if (!info.value) return
+  llamandoMesero.value = true
+  try {
+    await llamarMeseroApi(info.value.mesa_id)
+    meseroAvisado.value = true
+    ElMessage.success('Ya avisamos al mesero, ya viene')
+    setTimeout(() => {
+      meseroAvisado.value = false
+    }, 60000)
+  } catch {
+    ElMessage.error('No se pudo avisar al mesero')
+  } finally {
+    llamandoMesero.value = false
+  }
+}
+
+function volverAlRestaurante() {
+  if (info.value) router.push(`/cliente/restaurantes/${info.value.restaurante_id}`)
+  else router.push('/cliente')
+}
+
 onMounted(cargar)
-onUnmounted(desconectarCarritoEnVivo)
+onUnmounted(() => {
+  desconectarCarritoEnVivo()
+  detenerPollingPedidos()
+})
 </script>
 
 <template>
@@ -239,46 +384,173 @@ onUnmounted(desconectarCarritoEnVivo)
     </div>
 
     <template v-else-if="info">
-      <header class="encabezado">
-        <h1>{{ info.restaurante_nombre }}</h1>
-        <p class="subtitulo">Mesa {{ info.numero }}</p>
+      <header class="barra-superior">
+        <button type="button" class="enlace-volver" @click="volverAlRestaurante">
+          <el-icon :size="16"><ArrowLeft /></el-icon>
+          Volver al restaurante
+        </button>
+        <div class="acciones-barra-superior">
+          <button type="button" class="boton-barra-superior" @click="infoAbierta = true">
+            <el-icon :size="16"><InfoFilled /></el-icon>
+            Información del restaurante
+          </button>
+          <button
+            v-if="sesion"
+            type="button"
+            class="boton-barra-superior boton-llamar"
+            :disabled="llamandoMesero || meseroAvisado"
+            @click="llamarMesero"
+          >
+            <el-icon :size="16"><Bell /></el-icon>
+            {{ meseroAvisado ? 'Mesero avisado' : 'Llamar al mesero' }}
+          </button>
+        </div>
       </header>
 
-      <div class="contenido" :class="{ 'con-carrito': totalItems > 0 && sesion }">
-        <template v-if="sesion">
-          <div class="banner banner-exito">
-            <span class="banner-icono">✓</span>
-            <span>Pidiendo como <strong>{{ sesion.nombre }}</strong></span>
-            <span class="chip-codigo">Código de tu mesa: <strong>{{ sesion.codigo_acceso }}</strong></span>
+      <div class="contenido" :class="{ 'con-carrito': totalItems > 0 && sesion && esDueno }">
+        <div class="hero-restaurante">
+          <img :src="imagenComida(info.restaurante_id, 200, 200)" :alt="info.restaurante_nombre" class="foto-restaurante" />
+          <div class="info-hero">
+            <h1>{{ info.restaurante_nombre }}</h1>
+            <p v-if="info.restaurante_categoria || info.restaurante_descripcion" class="subtitulo-hero">
+              {{ info.restaurante_categoria || info.restaurante_descripcion }}
+            </p>
           </div>
+        </div>
+
+        <div v-if="sesion" class="tarjeta-sesion">
+          <div class="fila-saludo">
+            <span class="icono-check"><el-icon :size="14"><Check /></el-icon></span>
+            <span>Hola, <strong>{{ sesion.nombre }}</strong> — ya estás en la <strong>Mesa {{ info.numero }}</strong></span>
+          </div>
+          <div class="divisor-sesion"></div>
+          <div class="fila-codigo">
+            <span>Código de tu mesa: <strong class="font-mono">{{ sesion.codigo_acceso }}</strong></span>
+            <span class="icono-qr"><el-icon :size="18"><Grid /></el-icon></span>
+          </div>
+        </div>
+
+        <div v-if="misPedidos.length > 0" class="tarjeta-mis-pedidos">
+          <p class="titulo-mis-pedidos">Tus pedidos</p>
+          <ul class="lista-mis-pedidos">
+            <li v-for="pedido in misPedidos" :key="pedido.id" class="fila-mis-pedidos">
+              <div class="info-mis-pedidos">
+                <span class="items-mis-pedidos">
+                  {{ pedido.items.map((i) => `${i.cantidad}× ${i.menu_item_nombre}`).join(', ') }}
+                </span>
+                <span class="hora-mis-pedidos">
+                  {{ new Date(pedido.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) }}
+                </span>
+              </div>
+              <el-tag
+                :type="pedido.estado === 'entregado' ? 'success' : pedido.estado === 'cancelado' ? 'danger' : 'warning'"
+                round
+              >
+                {{ etiquetaEstadoPedido[pedido.estado] }}
+              </el-tag>
+            </li>
+          </ul>
+        </div>
+
+        <template v-if="sesion">
           <p v-if="!esDueno" class="aviso-no-dueno">
             Podés sumar platos al carrito, pero solo quien abrió la mesa puede enviar el pedido.
           </p>
 
-          <section class="menu">
-            <h2>Menú</h2>
-            <div v-for="item in info.menu" :key="item.id" class="fila-menu">
-              <div class="info-plato">
-                <p class="nombre-plato">{{ item.nombre }}</p>
-                <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
-                <p class="precio-plato">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+          <div class="layout-pedido">
+            <section class="columna-menu-mesa">
+              <div class="barra-filtros">
+                <div class="pildoras-categoria">
+                  <button
+                    v-for="grupo in gruposMenu"
+                    :key="claveGrupo(grupo.categoria?.id)"
+                    type="button"
+                    class="pildora-categoria"
+                    @click="irACategoria(grupo.categoria?.id)"
+                  >
+                    {{ grupo.categoria?.nombre ?? 'Otros' }}
+                  </button>
+                </div>
+                <el-input v-model="busqueda" placeholder="Buscar en el menú..." class="input-buscar" :prefix-icon="Search" />
               </div>
-              <div class="controles-cantidad">
-                <button
-                  type="button"
-                  class="boton-stepper"
-                  :disabled="!carrito[item.id]"
-                  @click="restar(item.id)"
+
+              <div
+                v-for="grupo in gruposMenu"
+                :key="claveGrupo(grupo.categoria?.id)"
+                :id="claveGrupo(grupo.categoria?.id)"
+                class="grupo-categoria"
+              >
+                <h3 v-if="gruposMenu.length > 1" class="titulo-categoria">
+                  {{ grupo.categoria?.nombre ?? 'Otros' }}
+                </h3>
+                <div v-for="item in grupo.items" :key="item.id" class="tarjeta-plato">
+                  <img :src="imagenComida(item.id, 160, 160)" :alt="item.nombre" class="foto-plato" />
+                  <div class="info-plato">
+                    <p class="nombre-plato">{{ item.nombre }}</p>
+                    <p v-if="item.descripcion" class="descripcion-plato">{{ item.descripcion }}</p>
+                    <p class="precio-plato">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                  </div>
+                  <div class="controles-cantidad">
+                    <button
+                      type="button"
+                      class="boton-stepper"
+                      :disabled="!carrito[item.id]"
+                      @click="restar(item.id)"
+                    >
+                      −
+                    </button>
+                    <span class="cantidad">{{ carrito[item.id] ?? 0 }}</span>
+                    <button type="button" class="boton-stepper boton-stepper-primario" @click="sumar(item.id)">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <el-empty v-if="gruposMenu.length === 0" description="No encontramos platos con esa búsqueda" />
+            </section>
+
+            <aside class="columna-carrito-mesa">
+              <div class="tarjeta-carrito">
+                <div class="cabecera-carrito">
+                  <span class="titulo-carrito"><el-icon :size="18"><ShoppingBag /></el-icon> Tu pedido</span>
+                  <span class="badge-cantidad-carrito">{{ totalItems }} {{ totalItems === 1 ? 'producto' : 'productos' }}</span>
+                </div>
+
+                <div v-if="itemsDelCarrito.length === 0" class="carrito-vacio">
+                  <el-icon :size="40" class="icono-carrito-vacio"><ShoppingBag /></el-icon>
+                  <p class="carrito-vacio-titulo">Aún no has agregado productos a tu pedido</p>
+                  <p class="carrito-vacio-texto">Explorá el menú y agregá los platos que más te gusten.</p>
+                </div>
+                <ul v-else class="lista-carrito">
+                  <li v-for="item in itemsDelCarrito" :key="item.id">
+                    <span class="cantidad-item-carrito">{{ item.cantidad }}×</span>
+                    <span class="nombre-item-carrito">{{ item.nombre }}</span>
+                    <span class="precio-item-carrito font-mono">${{ (item.cantidad * item.precio).toLocaleString('es-CO') }}</span>
+                  </li>
+                </ul>
+
+                <el-button
+                  v-if="esDueno"
+                  type="primary"
+                  class="boton-enviar-carrito"
+                  :disabled="totalItems === 0"
+                  :loading="enviandoPedido"
+                  @click="enviarPedido"
                 >
-                  −
-                </button>
-                <span class="cantidad">{{ carrito[item.id] ?? 0 }}</span>
-                <button type="button" class="boton-stepper boton-stepper-primario" @click="sumar(item.id)">
-                  +
-                </button>
+                  Enviar pedido
+                </el-button>
+                <p v-else class="texto-solo-dueno">Solo quien abrió la mesa puede enviar el pedido</p>
+
+                <p class="total-carrito">Total: <strong>${{ totalPrecio.toLocaleString('es-CO') }}</strong></p>
+
+                <div class="nota-carrito">
+                  <el-icon :size="14"><InfoFilled /></el-icon>
+                  Tu pedido será enviado al mesero para su confirmación.
+                </div>
               </div>
-            </div>
-          </section>
+            </aside>
+          </div>
         </template>
 
         <div v-else-if="info.estado === 'ocupada'" class="contenido-centrado sin-padding-top">
@@ -341,13 +613,12 @@ onUnmounted(desconectarCarritoEnVivo)
         </div>
       </div>
 
-      <div v-if="sesion && totalItems > 0" class="barra-carrito">
+      <div v-if="sesion && esDueno && totalItems > 0" class="barra-carrito">
         <div class="barra-carrito-info">
           <span class="barra-carrito-items">{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }}</span>
           <span class="barra-carrito-total">${{ totalPrecio.toLocaleString('es-CO') }}</span>
         </div>
         <el-button
-          v-if="esDueno"
           type="primary"
           size="large"
           :loading="enviandoPedido"
@@ -356,8 +627,21 @@ onUnmounted(desconectarCarritoEnVivo)
         >
           Enviar pedido
         </el-button>
-        <span v-else class="texto-solo-dueno">Solo quien abrió la mesa puede enviar</span>
       </div>
+
+      <el-dialog v-model="infoAbierta" title="Información del restaurante" width="360px">
+        <p class="dialogo-info-nombre">{{ info.restaurante_nombre }}</p>
+        <p v-if="info.restaurante_categoria" class="dialogo-info-linea">{{ info.restaurante_categoria }}</p>
+        <p
+          v-if="info.restaurante_descripcion && info.restaurante_descripcion !== info.restaurante_categoria"
+          class="dialogo-info-linea"
+        >
+          {{ info.restaurante_descripcion }}
+        </p>
+        <p v-if="!info.restaurante_categoria && !info.restaurante_descripcion" class="dialogo-info-linea">
+          Este restaurante todavía no cargó más información.
+        </p>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -367,6 +651,7 @@ onUnmounted(desconectarCarritoEnVivo)
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: var(--surface-sunken);
 }
 
 .contenido-centrado {
@@ -414,23 +699,76 @@ onUnmounted(desconectarCarritoEnVivo)
   font-weight: 600;
 }
 
-.encabezado {
-  padding: var(--space-5) var(--space-6);
+.barra-superior {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 15;
 }
 
-.encabezado h1 {
-  font-size: 1.25rem;
+.enlace-volver {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0;
 }
 
-.subtitulo {
+.acciones-barra-superior {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.boton-barra-superior {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.boton-barra-superior:hover {
+  background: var(--border-subtle);
+}
+
+.boton-llamar {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+  border-color: transparent;
+}
+
+.boton-llamar:hover {
+  background: var(--color-secondary-soft);
+}
+
+.boton-llamar:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .contenido {
-  max-width: 560px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: var(--space-6);
   width: 100%;
@@ -441,72 +779,234 @@ onUnmounted(desconectarCarritoEnVivo)
   padding-bottom: calc(var(--space-6) + 88px);
 }
 
-.banner {
+.hero-restaurante {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.foto-restaurante {
+  width: 72px;
+  height: 72px;
   border-radius: var(--radius-md);
-  font-size: 0.9rem;
-  font-weight: 500;
-  margin-bottom: var(--space-2);
-}
-
-.banner-exito {
-  background: var(--color-success-bg);
-  color: var(--color-success-text);
-}
-
-.banner-icono {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-full);
-  background: var(--color-success);
-  color: white;
-  font-size: 0.8rem;
+  object-fit: cover;
   flex-shrink: 0;
 }
 
-.chip-codigo {
-  margin-left: auto;
-  font-size: 0.8rem;
-  background: var(--surface-raised);
-  padding: var(--space-1) var(--space-3);
+.info-hero h1 {
+  font-size: 1.4rem;
+}
+
+.subtitulo-hero {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-top: var(--space-1);
+}
+
+.tarjeta-sesion {
+  background: var(--color-success-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.fila-saludo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-success-text);
+  font-size: 0.9rem;
+}
+
+.icono-check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   border-radius: var(--radius-full);
-  font-variant-numeric: tabular-nums;
+  background: var(--color-success);
+  color: white;
+  flex-shrink: 0;
+}
+
+.divisor-sesion {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: var(--space-3) 0;
+}
+
+.fila-codigo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-success-text);
+  font-size: 0.9rem;
+}
+
+.icono-qr {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--color-success);
+}
+
+.tarjeta-mis-pedidos {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.titulo-mis-pedidos {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: var(--space-3);
+}
+
+.lista-mis-pedidos {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fila-mis-pedidos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.info-mis-pedidos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.items-mis-pedidos {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hora-mis-pedidos {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
 }
 
 .aviso-no-dueno {
   font-size: 0.8rem;
   color: var(--text-tertiary);
-  margin-bottom: var(--space-6);
-}
-
-.menu {
-  margin-top: var(--space-2);
-}
-
-.menu h2 {
   margin-bottom: var(--space-4);
 }
 
-.fila-menu {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) 0;
+.layout-pedido {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
 }
 
-.fila-menu + .fila-menu {
-  border-top: 1px solid var(--border-subtle);
+@media (min-width: 900px) {
+  .layout-pedido {
+    grid-template-columns: 1fr 340px;
+    align-items: start;
+  }
+}
+
+.barra-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.pildoras-categoria {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.pildora-categoria {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.pildora-categoria:hover {
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
+}
+
+.input-buscar {
+  max-width: 260px;
+  flex-shrink: 0;
+}
+
+.grupo-categoria {
+  scroll-margin-top: 88px;
+}
+
+.grupo-categoria + .grupo-categoria {
+  margin-top: var(--space-6);
+}
+
+.titulo-categoria {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-3);
+}
+
+.tarjeta-plato {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+}
+
+.tarjeta-plato + .tarjeta-plato {
+  margin-top: var(--space-3);
+}
+
+.foto-plato {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.info-plato {
+  flex: 1;
+  min-width: 0;
 }
 
 .nombre-plato {
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .descripcion-plato {
@@ -516,8 +1016,9 @@ onUnmounted(desconectarCarritoEnVivo)
 }
 
 .precio-plato {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
+  color: var(--color-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
   margin-top: var(--space-1);
 }
 
@@ -529,8 +1030,8 @@ onUnmounted(desconectarCarritoEnVivo)
 }
 
 .boton-stepper {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-default);
   background: var(--surface-raised);
@@ -567,6 +1068,125 @@ onUnmounted(desconectarCarritoEnVivo)
   font-variant-numeric: tabular-nums;
 }
 
+.columna-carrito-mesa {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .columna-carrito-mesa {
+    display: block;
+    position: sticky;
+    top: 88px;
+  }
+}
+
+.tarjeta-carrito {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-soft);
+}
+
+.cabecera-carrito {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.titulo-carrito {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+}
+
+.badge-cantidad-carrito {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.carrito-vacio {
+  text-align: center;
+  padding: var(--space-6) var(--space-2);
+}
+
+.icono-carrito-vacio {
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+
+.carrito-vacio-titulo {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: var(--space-2);
+}
+
+.carrito-vacio-texto {
+  color: var(--text-tertiary);
+  font-size: 0.825rem;
+}
+
+.lista-carrito {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4);
+}
+
+.lista-carrito li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+}
+
+.cantidad-item-carrito {
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+.nombre-item-carrito {
+  flex: 1;
+}
+
+.boton-enviar-carrito {
+  width: 100%;
+  font-weight: 600;
+  margin-top: var(--space-2);
+}
+
+.texto-solo-dueno {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+  text-align: center;
+}
+
+.total-carrito {
+  text-align: center;
+  margin-top: var(--space-4);
+  font-size: 1rem;
+}
+
+.nota-carrito {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
 .barra-carrito {
   position: fixed;
   bottom: 0;
@@ -582,6 +1202,12 @@ onUnmounted(desconectarCarritoEnVivo)
   gap: var(--space-4);
   z-index: 20;
   padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+}
+
+@media (min-width: 900px) {
+  .barra-carrito {
+    display: none;
+  }
 }
 
 .barra-carrito-info {
@@ -605,9 +1231,14 @@ onUnmounted(desconectarCarritoEnVivo)
   padding-inline: var(--space-8);
 }
 
-.texto-solo-dueno {
-  font-size: 0.85rem;
-  color: var(--text-tertiary);
-  font-style: italic;
+.dialogo-info-nombre {
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.dialogo-info-linea {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-1);
 }
 </style>

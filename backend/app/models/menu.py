@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.categoria_menu import menu_item_categoria
 
 
 class MenuItem(Base):
@@ -17,3 +18,6 @@ class MenuItem(Base):
     disponible: Mapped[bool] = mapped_column(default=True)
 
     restaurante: Mapped["Restaurante"] = relationship(back_populates="menu_items")
+    categorias: Mapped[list["CategoriaMenu"]] = relationship(
+        secondary=menu_item_categoria, back_populates="items"
+    )

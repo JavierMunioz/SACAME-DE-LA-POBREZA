@@ -10,7 +10,7 @@ import {
   type Restaurante,
 } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
-import AppSidebar from '../../components/AppSidebar.vue'
+import AppTopNav from '../../components/AppTopNav.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -20,9 +20,12 @@ const cargando = ref(true)
 const dialogoAbierto = ref(false)
 const guardando = ref(false)
 
+const CATEGORIAS = ['Mariscos', 'Italiana', 'Hamburguesas', 'Parrilla', 'Sushi', 'Otra']
+
 const form = reactive({
   nombre: '',
   descripcion: '',
+  categoria: '',
   menu: [] as MenuItemCreate[],
 })
 
@@ -43,6 +46,7 @@ function quitarItemMenu(index: number) {
 function abrirDialogo() {
   form.nombre = ''
   form.descripcion = ''
+  form.categoria = ''
   form.menu = []
   dialogoAbierto.value = true
 }
@@ -57,6 +61,7 @@ async function guardar() {
     await crearRestaurante({
       nombre: form.nombre,
       descripcion: form.descripcion || undefined,
+      categoria: form.categoria || undefined,
       menu_inicial: form.menu.filter((m) => m.nombre.trim()),
     })
     ElMessage.success('Restaurante creado')
@@ -82,29 +87,27 @@ onMounted(cargar)
 </script>
 
 <template>
-  <div class="layout">
-    <AppSidebar subtitulo="Admin General" @salir="cerrarSesion">
+  <div class="pagina">
+    <AppTopNav subtitulo="Admin General" @salir="cerrarSesion">
       <template #nav>
         <span class="nav-item nav-item--activo">
-          <el-icon :size="18"><Grid /></el-icon>
+          <el-icon :size="16"><Grid /></el-icon>
           <span>Restaurantes</span>
         </span>
       </template>
       <template #accion-principal>
-        <button type="button" class="boton-primario-sidebar" @click="abrirDialogo">
-          <el-icon :size="16"><Plus /></el-icon>
-          <span>Nuevo restaurante</span>
-        </button>
+        <el-button type="primary" @click="abrirDialogo">
+          <el-icon :size="16" style="margin-right: 6px"><Plus /></el-icon>
+          Nuevo restaurante
+        </el-button>
       </template>
-    </AppSidebar>
+    </AppTopNav>
 
     <main class="contenido-principal">
-      <header class="encabezado">
-        <div>
-          <h1>Restaurantes</h1>
-          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
-        </div>
-      </header>
+      <div class="titulo-seccion">
+        <h1>Restaurantes</h1>
+        <p class="subtitulo">Hola, {{ auth.usuario?.nombre }}</p>
+      </div>
 
       <div class="contenido">
         <div v-if="cargando" class="grid-restaurantes">
@@ -143,6 +146,11 @@ onMounted(cargar)
         <el-form-item label="Descripción">
           <el-input v-model="form.descripcion" type="textarea" :rows="2" />
         </el-form-item>
+        <el-form-item label="Categoría">
+          <el-select v-model="form.categoria" placeholder="Elegí una categoría" style="width: 100%">
+            <el-option v-for="c in CATEGORIAS" :key="c" :label="c" :value="c" />
+          </el-select>
+        </el-form-item>
 
         <el-form-item label="Menú inicial (opcional)">
           <div class="menu-items">
@@ -165,82 +173,33 @@ onMounted(cargar)
 </template>
 
 <style scoped>
-.layout {
+.pagina {
   min-height: 100dvh;
+  background: var(--surface-sunken);
 }
 
 .contenido-principal {
-  margin-left: var(--sidebar-width);
-  min-height: 100dvh;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
 }
 
-.encabezado {
-  padding: var(--gutter);
-  background: color-mix(in srgb, var(--surface-raised) 85%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+.titulo-seccion {
+  margin-bottom: var(--space-8);
+}
+
+.titulo-seccion h1 {
+  font-size: 1.75rem;
+  margin-bottom: var(--space-1);
 }
 
 .subtitulo {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .contenido {
-  max-width: 1200px;
-  padding: var(--gutter);
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  position: relative;
-}
-
-.nav-item--activo {
-  background: var(--surface-muted);
-  color: var(--color-secondary);
-}
-
-.nav-item--activo::before {
-  content: '';
-  position: absolute;
-  left: -16px;
-  width: 4px;
-  height: 24px;
-  background: var(--color-secondary);
-  border-radius: 0 4px 4px 0;
-}
-
-.boton-primario-sidebar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
   width: 100%;
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: var(--space-2);
-  transition: opacity var(--duration-fast) var(--ease-standard);
-}
-
-.boton-primario-sidebar:hover {
-  opacity: 0.9;
 }
 
 .grid-restaurantes {
@@ -316,9 +275,13 @@ onMounted(cargar)
 }
 
 .menu-item-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
+}
+
+.menu-item-row .el-input {
+  flex: 1 1 140px;
 }
 </style>

@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Tickets } from '@element-plus/icons-vue'
-import { cancelarPedido, confirmarPedido, listarPedidos, type Pedido } from '../../api/pedidos'
-import { generarFactura, type Factura } from '../../api/facturas'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Tickets, Grid, Bell, ShoppingBag, Document, Promotion, Van } from '@element-plus/icons-vue'
+import {
+  cancelarPedido,
+  confirmarPedido,
+  crearPedido,
+  crearPedidoDomicilio,
+  listarPedidos,
+  marcarEntregado,
+  type CanalPedido,
+  type Pedido,
+} from '../../api/pedidos'
+import { generarFactura, generarPrefactura, type Factura } from '../../api/facturas'
+import { atenderLlamado, liberarMesa, ocuparMesaStaff } from '../../api/mesas'
+import { listarMesas, obtenerRestaurante, type Mesa, type MenuItem } from '../../api/restaurantes'
 import { useAuthStore } from '../../stores/auth'
-import AppSidebar from '../../components/AppSidebar.vue'
+import { agruparMenuPorCategoria } from '../../utils/menuCategorias'
+import { imagenComida } from '../../utils/imagenesComida'
+import AppTopNav from '../../components/AppTopNav.vue'
+import MesaVisual from '../../components/MesaVisual.vue'
 
 // Sin infraestructura de tiempo real todavía (ver Brain.md): se refresca
 // por polling cada 5s, simple y suficiente para el volumen de un MVP.
@@ -20,34 +34,94 @@ let intervalo: ReturnType<typeof setInterval> | undefined
 const router = useRouter()
 const auth = useAuthStore()
 
+const vista = ref<'pedidos' | 'mesas'>('pedidos')
+const mesas = ref<Mesa[]>([])
+const menu = ref<MenuItem[]>([])
+const cargandoMesas = ref(true)
+const procesandoMesa = ref<number | null>(null)
+
 async function cargar() {
   pedidos.value = await listarPedidos()
   cargando.value = false
 }
 
-const ESTADOS_ACTIVOS = ['pendiente', 'confirmado', 'preparando', 'listo']
-const ESTADOS_EN_COCINA = ['confirmado', 'preparando', 'listo']
+async function cargarMesas() {
+  if (!auth.usuario?.restaurante_id) return
+  const [m, r] = await Promise.all([
+    listarMesas(auth.usuario.restaurante_id),
+    obtenerRestaurante(auth.usuario.restaurante_id),
+  ])
+  mesas.value = m
+  menu.value = r.menu
+  cargandoMesas.value = false
+}
 
-// La factura cierra los pedidos en curso (pasan a "entregado"); una vez
-// facturados dejan de ser accionables, no tiene sentido seguir mostrándolos
-// en la comanda activa.
+const ESTADOS_ACTIVOS = ['pendiente', 'confirmado', 'preparando', 'listo']
+
+// Una vez entregado, el pedido sale de la comanda activa (ya no hay nada
+// que el mesero tenga que hacer con él salvo facturarlo). Solo se puede
+// facturar lo entregado (ver Brain.md) — "listo" es cocina avisando que
+// ya se puede servir, no que ya se sirvió.
 const pedidosActivos = computed(() =>
   pedidos.value.filter((p) => ESTADOS_ACTIVOS.includes(p.estado)),
 )
 
 const mesasParaCerrar = computed(() => {
   const vistas = new Map<number, number>()
-  for (const p of pedidosActivos.value) {
-    if (ESTADOS_EN_COCINA.includes(p.estado)) vistas.set(p.mesa_id, p.mesa_numero)
+  for (const p of pedidos.value) {
+    // Domicilio no tiene mesa (mesa_id null) — no entra en esta lista,
+    // la facturación por mesa no le aplica.
+    if (p.estado === 'entregado' && p.factura_id === null && p.mesa_id !== null) {
+      vistas.set(p.mesa_id, p.mesa_numero as number)
+    }
   }
   return [...vistas.entries()].map(([mesa_id, mesa_numero]) => ({ mesa_id, mesa_numero }))
 })
+
+const etiquetaCanal: Record<string, string> = {
+  domicilio_interno: 'Domicilio',
+  rappi: 'Rappi',
+  didi: 'Didi',
+}
+
+const repartidoresDisponibles = ref<{ id: number; nombre: string }[]>([])
+const repartidorSeleccionado = reactive<Record<number, number | undefined>>({})
+
+async function cargarRepartidores() {
+  if (!auth.usuario?.restaurante_id) return
+  const { listarPersonal } = await import('../../api/restaurantes')
+  const personal = await listarPersonal(auth.usuario.restaurante_id)
+  repartidoresDisponibles.value = personal
+    .filter((p) => p.rol === 'repartidor')
+    .map((p) => ({ id: p.id, nombre: p.nombre }))
+}
+
+async function asignarRepartidorAPedido(pedido: Pedido) {
+  const repartidorId = repartidorSeleccionado[pedido.id]
+  if (!repartidorId) {
+    ElMessage.warning('Elegí un repartidor')
+    return
+  }
+  procesando.value = pedido.id
+  try {
+    const { asignarRepartidor } = await import('../../api/pedidos')
+    await asignarRepartidor(pedido.id, repartidorId)
+    ElMessage.success('Repartidor asignado')
+    menuPedidoAbierto.value = null
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo asignar el repartidor')
+  } finally {
+    procesando.value = null
+  }
+}
 
 const etiquetaEstado: Record<string, string> = {
   pendiente: 'Pendiente',
   confirmado: 'En cocina',
   preparando: 'Preparando',
   listo: 'Listo para servir',
+  entregado: 'Entregado',
 }
 
 async function confirmar(pedido: Pedido) {
@@ -71,6 +145,19 @@ async function cancelar(pedido: Pedido) {
     await cargar()
   } catch {
     ElMessage.error('No se pudo cancelar el pedido')
+  } finally {
+    procesando.value = null
+  }
+}
+
+async function entregar(pedido: Pedido) {
+  procesando.value = pedido.id
+  try {
+    await marcarEntregado(pedido.id)
+    ElMessage.success(`Mesa ${pedido.mesa_numero} entregada`)
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo marcar como entregado')
   } finally {
     procesando.value = null
   }
@@ -118,33 +205,302 @@ function imprimir() {
   window.print()
 }
 
+// Prefactura de domicilio interno: el mesero la genera antes de asignar
+// repartidor (mismo comprobante que la factura de mesa, pero nace sin
+// pagar) — se la entrega impresa al repartidor, que la cobra contra
+// entrega (ver Brain.md).
+const dialogoPrefacturaAbierto = ref(false)
+const generandoPrefactura = ref(false)
+const pedidoAPrefacturar = ref<Pedido | null>(null)
+const formPrefactura = reactive({ incluirPropina: false, porcentaje: 10 })
+
+const prefacturaVoucherAbierta = ref(false)
+const prefacturaVoucher = ref<Factura | null>(null)
+
+function abrirDialogoPrefactura(pedido: Pedido) {
+  pedidoAPrefacturar.value = pedido
+  formPrefactura.incluirPropina = false
+  formPrefactura.porcentaje = 10
+  dialogoPrefacturaAbierto.value = true
+}
+
+async function confirmarPrefactura() {
+  if (!pedidoAPrefacturar.value) return
+  generandoPrefactura.value = true
+  try {
+    prefacturaVoucher.value = await generarPrefactura(pedidoAPrefacturar.value.id, {
+      incluye_propina: formPrefactura.incluirPropina,
+      porcentaje_propina: (formPrefactura.porcentaje / 100).toFixed(2),
+    })
+    dialogoPrefacturaAbierto.value = false
+    prefacturaVoucherAbierta.value = true
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo generar la prefactura')
+  } finally {
+    generandoPrefactura.value = false
+  }
+}
+
+const etiquetaEstadoMesa: Record<Mesa['estado'], string> = {
+  libre: 'Libre',
+  reservada: 'Reservada',
+  ocupada: 'Ocupada',
+}
+
+const dialogoOcuparAbierto = ref(false)
+const mesaAOcupar = ref<Mesa | null>(null)
+const nombreOcupar = ref('')
+
+function abrirDialogoOcupar(mesa: Mesa) {
+  mesaAOcupar.value = mesa
+  nombreOcupar.value = ''
+  dialogoOcuparAbierto.value = true
+}
+
+async function confirmarOcupar() {
+  if (!mesaAOcupar.value) return
+  const numero = mesaAOcupar.value.numero
+  procesandoMesa.value = mesaAOcupar.value.id
+  try {
+    const sesion = await ocuparMesaStaff(mesaAOcupar.value.id, nombreOcupar.value || undefined)
+    dialogoOcuparAbierto.value = false
+    await cargarMesas()
+    await ElMessageBox.alert(
+      `Código de acceso: <strong style="font-size:1.5rem;letter-spacing:0.1em">${sesion.codigo_acceso}</strong><br>Si el cliente quiere pedir después desde su celular, escanea el QR de la mesa y usa este código para sumarse.`,
+      `Mesa ${numero} ocupada`,
+      { dangerouslyUseHTMLString: true, confirmButtonText: 'Listo' },
+    )
+  } catch {
+    ElMessage.error('No se pudo ocupar la mesa')
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
+async function liberar(mesa: Mesa) {
+  try {
+    await ElMessageBox.confirm(
+      `¿Liberar la mesa ${mesa.numero}? Esto no genera factura.`,
+      'Liberar mesa',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  procesandoMesa.value = mesa.id
+  try {
+    await liberarMesa(mesa.id)
+    ElMessage.success(`Mesa ${mesa.numero} liberada`)
+    await cargarMesas()
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    ElMessage.error(
+      status === 409
+        ? 'Esta mesa tiene pedidos sin facturar. Facturá primero.'
+        : 'No se pudo liberar la mesa',
+    )
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
+// Ninguna acción sobre la mesa vive en un botón aparte: se dispara al
+// presionar la mesa misma. Libre tiene una sola acción posible (ocupar),
+// así que dispara directo; ocupada tiene dos (pedido/liberar), así que
+// abre un menú chico en vez de adivinar cuál querés.
+const menuMesaAbierta = ref<number | null>(null)
+
+function onClickMesa(mesa: Mesa) {
+  if (mesa.estado === 'libre') {
+    abrirDialogoOcupar(mesa)
+  } else if (mesa.estado === 'ocupada') {
+    menuMesaAbierta.value = menuMesaAbierta.value === mesa.id ? null : mesa.id
+  }
+}
+
+function elegirAccionMesa(mesa: Mesa, accion: 'pedido' | 'liberar') {
+  menuMesaAbierta.value = null
+  if (accion === 'pedido') abrirDialogoPedido(mesa)
+  else liberar(mesa)
+}
+
+// Mismo patrón táctil que las mesas: nada de botones sueltos en la
+// tarjeta, la acción sale de tocar la tarjeta del pedido.
+const menuPedidoAbierto = ref<number | null>(null)
+
+function pedidoEsTocable(pedido: Pedido): boolean {
+  if (pedido.estado === 'pendiente') return true
+  if (pedido.estado === 'listo') {
+    // Domicilio ya asignado: no hay nada más que el mesero pueda hacer,
+    // le toca al repartidor — no tiene sentido abrir un menú vacío.
+    if (pedido.canal === 'domicilio_interno') return !pedido.repartidor_id
+    return true
+  }
+  return false
+}
+
+function onClickPedido(pedido: Pedido) {
+  if (!pedidoEsTocable(pedido)) return
+  // Generar la prefactura abre un diálogo de verdad (como ocupar una
+  // mesa libre), no el mini-menú superpuesto — es un formulario, no una
+  // elección entre acciones cortas.
+  if (pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && !pedido.factura_id) {
+    abrirDialogoPrefactura(pedido)
+    return
+  }
+  menuPedidoAbierto.value = menuPedidoAbierto.value === pedido.id ? null : pedido.id
+}
+
+async function elegirAccionPedido(pedido: Pedido, accion: 'confirmar' | 'cancelar' | 'entregar') {
+  menuPedidoAbierto.value = null
+  if (accion === 'confirmar') await confirmar(pedido)
+  else if (accion === 'cancelar') await cancelar(pedido)
+  else await entregar(pedido)
+}
+
+async function atender(mesa: Mesa) {
+  procesandoMesa.value = mesa.id
+  try {
+    await atenderLlamado(mesa.id)
+    await cargarMesas()
+  } catch {
+    ElMessage.error('No se pudo marcar como atendido')
+  } finally {
+    procesandoMesa.value = null
+  }
+}
+
+const dialogoPedidoAbierto = ref(false)
+const mesaPedido = ref<Mesa | null>(null)
+// Null = pedido de mesa (mesaPedido manda); con valor = pedido externo
+// sin mesa, registrado a mano porque no hay integración real con la API
+// de Rappi/Didi (ver Brain.md).
+const canalPedidoExterno = ref<Extract<CanalPedido, 'rappi' | 'didi'> | null>(null)
+const cantidades = reactive<Record<number, number>>({})
+const observacionesPorItem = reactive<Record<number, string>>({})
+const enviandoPedido = ref(false)
+
+function abrirDialogoPedido(mesa: Mesa) {
+  mesaPedido.value = mesa
+  canalPedidoExterno.value = null
+  for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
+  for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
+  dialogoPedidoAbierto.value = true
+}
+
+function abrirDialogoPedidoExterno() {
+  mesaPedido.value = null
+  canalPedidoExterno.value = 'rappi'
+  for (const key of Object.keys(cantidades)) delete cantidades[Number(key)]
+  for (const key of Object.keys(observacionesPorItem)) delete observacionesPorItem[Number(key)]
+  dialogoPedidoAbierto.value = true
+}
+
+const gruposMenuPedido = computed(() => agruparMenuPorCategoria(menu.value))
+
+const itemsSeleccionados = computed(() =>
+  Object.entries(cantidades)
+    .filter(([, cantidad]) => cantidad > 0)
+    .map(([menu_item_id, cantidad]) => ({
+      menu_item_id: Number(menu_item_id),
+      cantidad,
+      observaciones: observacionesPorItem[Number(menu_item_id)]?.trim() || undefined,
+    })),
+)
+
+const totalPedidoMesero = computed(() =>
+  itemsSeleccionados.value.reduce((suma, sel) => {
+    const item = menu.value.find((m) => m.id === sel.menu_item_id)
+    return suma + (item ? Number(item.precio) * sel.cantidad : 0)
+  }, 0),
+)
+
+function sumarCantidad(itemId: number) {
+  cantidades[itemId] = (cantidades[itemId] ?? 0) + 1
+}
+
+function restarCantidad(itemId: number) {
+  if (!cantidades[itemId]) return
+  cantidades[itemId] -= 1
+}
+
+async function enviarPedidoMesero() {
+  if (itemsSeleccionados.value.length === 0) return
+  if (!mesaPedido.value && !canalPedidoExterno.value) return
+  enviandoPedido.value = true
+  try {
+    if (mesaPedido.value) {
+      await crearPedido(mesaPedido.value.id, itemsSeleccionados.value)
+      ElMessage.success(`Pedido tomado para mesa ${mesaPedido.value.numero}`)
+    } else if (canalPedidoExterno.value && auth.usuario?.restaurante_id) {
+      await crearPedidoDomicilio({
+        restauranteId: auth.usuario.restaurante_id,
+        canal: canalPedidoExterno.value,
+        items: itemsSeleccionados.value,
+      })
+      ElMessage.success(`Pedido de ${canalPedidoExterno.value === 'rappi' ? 'Rappi' : 'Didi'} registrado`)
+    }
+    dialogoPedidoAbierto.value = false
+    await cargar()
+  } catch {
+    ElMessage.error('No se pudo registrar el pedido')
+  } finally {
+    enviandoPedido.value = false
+  }
+}
+
 onMounted(() => {
   cargar()
-  intervalo = setInterval(cargar, INTERVALO_POLLING_MS)
+  cargarMesas()
+  cargarRepartidores()
+  intervalo = setInterval(() => {
+    cargar()
+    if (vista.value === 'mesas') cargarMesas()
+    cargarRepartidores()
+  }, INTERVALO_POLLING_MS)
 })
 onUnmounted(() => clearInterval(intervalo))
 </script>
 
 <template>
-  <div class="layout">
-    <AppSidebar subtitulo="Comanda" @salir="cerrarSesion">
+  <div class="pagina">
+    <AppTopNav subtitulo="Comanda" @salir="cerrarSesion">
       <template #nav>
-        <span class="nav-item nav-item--activo">
-          <el-icon :size="18"><Tickets /></el-icon>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ 'nav-item--activo': vista === 'pedidos' }"
+          @click="vista = 'pedidos'"
+        >
+          <el-icon :size="16"><Tickets /></el-icon>
           <span>Pedidos</span>
-        </span>
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ 'nav-item--activo': vista === 'mesas' }"
+          @click="vista = 'mesas'; cargarMesas()"
+        >
+          <el-icon :size="16"><Grid /></el-icon>
+          <span>Mesas</span>
+        </button>
       </template>
-    </AppSidebar>
+      <template v-if="vista === 'pedidos'" #accion-principal>
+        <el-button size="default" @click="abrirDialogoPedidoExterno">
+          <el-icon :size="16" style="margin-right: 6px"><Van /></el-icon>
+          Pedido Rappi/Didi
+        </el-button>
+      </template>
+    </AppTopNav>
 
     <main class="contenido-principal">
-      <header class="encabezado">
-        <div>
-          <h1>Comanda</h1>
-          <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
-        </div>
-      </header>
+      <div class="titulo-seccion">
+        <h1>{{ vista === 'pedidos' ? 'Comanda' : 'Mesas' }}</h1>
+        <p class="subtitulo">{{ auth.usuario?.nombre }}</p>
+      </div>
 
-      <div class="contenido">
+      <div v-if="vista === 'pedidos'" class="contenido">
         <div v-if="mesasParaCerrar.length > 0" class="franja-cerrar">
           <span class="franja-etiqueta">Listas para cerrar</span>
           <div class="franja-botones">
@@ -174,14 +530,25 @@ onUnmounted(() => clearInterval(intervalo))
             v-for="pedido in pedidosActivos"
             :key="pedido.id"
             class="tarjeta-pedido"
-            :class="`tarjeta-pedido--${pedido.estado}`"
+            :class="[`tarjeta-pedido--${pedido.estado}`, { 'tarjeta-pedido--tocable': pedidoEsTocable(pedido) }]"
+            @click="onClickPedido(pedido)"
           >
             <div class="cabecera-pedido">
-              <span class="mesa">Mesa {{ pedido.mesa_numero }}</span>
+              <span class="grupo-mesa">
+                <span class="mesa">
+                  {{ pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero}` : 'Domicilio' }}
+                </span>
+                <span v-if="pedido.canal !== 'mesa'" class="badge-canal">
+                  {{ etiquetaCanal[pedido.canal] }}
+                </span>
+              </span>
               <span class="badge-estado" :class="`badge-estado--${pedido.estado}`">
                 {{ etiquetaEstado[pedido.estado] }}
               </span>
             </div>
+            <p v-if="pedido.direccion_entrega" class="nombre-invitado">
+              {{ pedido.direccion_entrega }}<span v-if="pedido.telefono_entrega"> · {{ pedido.telefono_entrega }}</span>
+            </p>
             <p v-if="pedido.nombre_invitado" class="nombre-invitado">
               Pidió: {{ pedido.nombre_invitado }} <span class="chip-invitado-pedido">invitado</span>
             </p>
@@ -191,25 +558,171 @@ onUnmounted(() => clearInterval(intervalo))
                 <span v-if="item.observaciones" class="observaciones">{{ item.observaciones }}</span>
               </li>
             </ul>
-            <div v-if="pedido.estado === 'pendiente'" class="acciones-pedido">
-              <el-button
-                plain
-                size="large"
-                :loading="procesando === pedido.id"
-                class="boton-accion"
-                @click="cancelar(pedido)"
+            <p v-if="pedido.estado === 'pendiente'" class="pista-accion-mesa">
+              Tocá el pedido para confirmar o cancelar
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && pedido.repartidor_id"
+              class="texto-info-pedido"
+            >
+              Asignado a {{ pedido.repartidor_nombre }}, esperando que salga · cobra
+              ${{ Number(pedido.factura_total).toLocaleString('es-CO') }}
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno' && !pedido.factura_id"
+              class="pista-accion-mesa"
+            >
+              Tocá el pedido para generar la prefactura
+            </p>
+            <p
+              v-else-if="pedido.estado === 'listo' && pedido.canal === 'domicilio_interno'"
+              class="pista-accion-mesa"
+            >
+              Tocá el pedido para asignar repartidor
+            </p>
+            <p v-else-if="pedido.estado === 'listo'" class="pista-accion-mesa">
+              Tocá el pedido para marcar entregado
+            </p>
+
+            <div
+              v-if="menuPedidoAbierto === pedido.id && pedido.estado === 'pendiente'"
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
+            >
+              <button
+                type="button"
+                class="opcion-menu-mesa"
+                @click.stop="elegirAccionPedido(pedido, 'confirmar')"
+              >
+                Confirmar
+              </button>
+              <button
+                type="button"
+                class="opcion-menu-mesa opcion-menu-mesa--liberar"
+                @click.stop="elegirAccionPedido(pedido, 'cancelar')"
               >
                 Cancelar
-              </el-button>
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
+            </div>
+
+            <div
+              v-else-if="
+                menuPedidoAbierto === pedido.id &&
+                pedido.estado === 'listo' &&
+                pedido.canal === 'domicilio_interno' &&
+                pedido.factura_id
+              "
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
+            >
+              <el-select
+                v-model="repartidorSeleccionado[pedido.id]"
+                placeholder="Elegí repartidor"
+                size="large"
+                class="select-repartidor"
+                @click.stop
+              >
+                <el-option
+                  v-for="r in repartidoresDisponibles"
+                  :key="r.id"
+                  :label="r.nombre"
+                  :value="r.id"
+                />
+              </el-select>
               <el-button
                 type="primary"
                 size="large"
                 :loading="procesando === pedido.id"
-                class="boton-accion"
-                @click="confirmar(pedido)"
+                @click.stop="asignarRepartidorAPedido(pedido)"
               >
-                Confirmar
+                Asignar
               </el-button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
+            </div>
+
+            <div
+              v-else-if="menuPedidoAbierto === pedido.id && pedido.estado === 'listo'"
+              class="menu-acciones-mesa"
+              @click.stop="menuPedidoAbierto = null"
+            >
+              <button
+                type="button"
+                class="opcion-menu-mesa"
+                @click.stop="elegirAccionPedido(pedido, 'entregar')"
+              >
+                Marcar entregado
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div v-else class="contenido">
+        <div v-if="cargandoMesas" class="grid-mesas">
+          <el-skeleton v-for="i in 3" :key="i" animated :rows="3" class="tarjeta-skeleton" />
+        </div>
+        <div v-else-if="mesas.length === 0" class="estado-vacio">
+          <p class="estado-vacio-titulo">Sin mesas todavía</p>
+          <p class="estado-vacio-texto">Las mesas las crea el admin del restaurante.</p>
+        </div>
+        <div v-else class="grid-mesas">
+          <article
+            v-for="mesa in mesas"
+            :key="mesa.id"
+            class="tarjeta-mesa"
+            :class="{
+              'tarjeta-mesa--llamando': mesa.llamado_mesero,
+              'tarjeta-mesa--clickable': mesa.estado !== 'reservada',
+              'tarjeta-mesa--procesando': procesandoMesa === mesa.id,
+            }"
+            @click="onClickMesa(mesa)"
+          >
+            <div class="cabecera-pedido">
+              <span class="mesa">Mesa {{ mesa.numero }}</span>
+              <span class="badge-estado" :class="`badge-estado-mesa--${mesa.estado}`">
+                {{ etiquetaEstadoMesa[mesa.estado] }}
+              </span>
+            </div>
+            <div class="contenedor-mesa-visual">
+              <MesaVisual :capacidad="mesa.capacidad" :estado="mesa.estado" class="mesa-visual-tarjeta" />
+            </div>
+            <div class="info-mesa">
+              <p class="capacidad-mesa">{{ mesa.capacidad }} personas</p>
+              <p v-if="mesa.codigo_acceso" class="codigo-acceso-mesa">
+                Código: <span class="font-mono">{{ mesa.codigo_acceso }}</span>
+              </p>
+              <p v-if="mesa.estado === 'libre'" class="pista-accion-mesa">Tocá la mesa para ocupar</p>
+              <p v-else-if="mesa.estado === 'ocupada'" class="pista-accion-mesa">Tocá la mesa para pedido/liberar</p>
+            </div>
+            <div v-if="mesa.llamado_mesero" class="aviso-llamado">
+              <span><el-icon :size="14"><Bell /></el-icon> Te están llamando</span>
+              <el-button
+                size="small"
+                :loading="procesandoMesa === mesa.id"
+                @click.stop="atender(mesa)"
+              >
+                Atendido
+              </el-button>
+            </div>
+
+            <div
+              v-if="menuMesaAbierta === mesa.id"
+              class="menu-acciones-mesa"
+              @click.stop="menuMesaAbierta = null"
+            >
+              <button type="button" class="opcion-menu-mesa" @click.stop="elegirAccionMesa(mesa, 'pedido')">
+                Tomar pedido
+              </button>
+              <button
+                type="button"
+                class="opcion-menu-mesa opcion-menu-mesa--liberar"
+                @click.stop="elegirAccionMesa(mesa, 'liberar')"
+              >
+                Liberar mesa
+              </button>
+              <p class="pista-cerrar-menu-mesa">Tocá afuera para cancelar</p>
             </div>
           </article>
         </div>
@@ -262,64 +775,198 @@ onUnmounted(() => clearInterval(intervalo))
         <el-button type="primary" @click="imprimir">Imprimir</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="dialogoPrefacturaAbierto" title="Generar prefactura" width="360px">
+      <p v-if="pedidoAPrefacturar" class="dialogo-mesa">
+        Pedido #{{ pedidoAPrefacturar.id }} · {{ pedidoAPrefacturar.direccion_entrega }}
+      </p>
+      <div class="campo-propina">
+        <span class="campo-label">¿Incluir propina?</span>
+        <el-switch v-model="formPrefactura.incluirPropina" />
+      </div>
+      <div v-if="formPrefactura.incluirPropina" class="campo-propina">
+        <span class="campo-label">Porcentaje</span>
+        <el-input-number v-model="formPrefactura.porcentaje" :min="0" :max="100" />
+      </div>
+      <template #footer>
+        <el-button @click="dialogoPrefacturaAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="generandoPrefactura" @click="confirmarPrefactura">
+          Generar prefactura
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="prefacturaVoucherAbierta" title="Prefactura" width="380px">
+      <div v-if="prefacturaVoucher" class="voucher">
+        <p class="voucher-mesa">Para el repartidor</p>
+        <ul class="voucher-items">
+          <li v-for="item in prefacturaVoucher.items" :key="item.id">
+            <span>{{ item.cantidad }}× {{ item.menu_item_nombre }}</span>
+            <span class="font-mono">${{ (Number(item.precio_unitario) * item.cantidad).toLocaleString('es-CO') }}</span>
+          </li>
+        </ul>
+        <div class="voucher-linea">
+          <span>Subtotal</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.subtotal).toLocaleString('es-CO') }}</span>
+        </div>
+        <div v-if="prefacturaVoucher.incluye_propina" class="voucher-linea">
+          <span>Propina</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.propina).toLocaleString('es-CO') }}</span>
+        </div>
+        <div class="voucher-linea voucher-total">
+          <span>Total a cobrar</span>
+          <span class="font-mono">${{ Number(prefacturaVoucher.total).toLocaleString('es-CO') }}</span>
+        </div>
+        <p class="pista-cerrar-menu-mesa">Entregale esto al repartidor junto con el pedido</p>
+      </div>
+      <template #footer>
+        <el-button @click="prefacturaVoucherAbierta = false">Cerrar</el-button>
+        <el-button type="primary" @click="imprimir">Imprimir</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoOcuparAbierto" title="Ocupar mesa" width="360px">
+      <p v-if="mesaAOcupar" class="dialogo-mesa">Mesa {{ mesaAOcupar.numero }}</p>
+      <el-input
+        v-model="nombreOcupar"
+        placeholder="Nombre (opcional)"
+        size="large"
+        maxlength="80"
+      />
+      <template #footer>
+        <el-button @click="dialogoOcuparAbierto = false">Cancelar</el-button>
+        <el-button type="primary" :loading="procesandoMesa === mesaAOcupar?.id" @click="confirmarOcupar">
+          Ocupar
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dialogoPedidoAbierto" width="460px" class="dialogo-tomar-pedido" :show-close="true">
+      <template #header>
+        <div class="cabecera-tomar-pedido">
+          <span class="icono-tomar-pedido"><el-icon :size="20"><ShoppingBag /></el-icon></span>
+          <div>
+            <p class="titulo-tomar-pedido">{{ mesaPedido ? 'Tomar pedido' : 'Pedido externo' }}</p>
+            <p v-if="mesaPedido" class="subtitulo-tomar-pedido">Mesa {{ mesaPedido.numero }}</p>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="canalPedidoExterno" class="selector-canal-externo">
+        <button
+          type="button"
+          class="opcion-canal-externo"
+          :class="{ 'opcion-canal-externo--activo': canalPedidoExterno === 'rappi' }"
+          @click="canalPedidoExterno = 'rappi'"
+        >
+          Rappi
+        </button>
+        <button
+          type="button"
+          class="opcion-canal-externo"
+          :class="{ 'opcion-canal-externo--activo': canalPedidoExterno === 'didi' }"
+          @click="canalPedidoExterno = 'didi'"
+        >
+          Didi
+        </button>
+      </div>
+
+      <el-empty v-if="menu.length === 0" description="Este restaurante no tiene menú cargado" />
+      <div v-else class="contenedor-menu-pedido">
+        <div v-for="grupo in gruposMenuPedido" :key="grupo.categoria?.id ?? 'otros'" class="grupo-categoria-pedido">
+          <h4 v-if="gruposMenuPedido.length > 1" class="titulo-categoria-pedido">
+            {{ grupo.categoria?.nombre ?? 'Otros' }}
+          </h4>
+          <ul class="lista-menu-pedido">
+            <li v-for="item in grupo.items" :key="item.id" class="fila-menu-pedido">
+              <div class="fila-menu-pedido-linea">
+                <img :src="imagenComida(item.id, 100, 100)" :alt="item.nombre" class="foto-item-menu" />
+                <div class="info-item-menu">
+                  <p class="nombre-item-menu">{{ item.nombre }}</p>
+                  <p class="precio-item-menu">${{ Number(item.precio).toLocaleString('es-CO') }}</p>
+                  <p v-if="item.descripcion" class="descripcion-item-menu">{{ item.descripcion }}</p>
+                </div>
+                <div class="stepper-item-menu">
+                  <button
+                    type="button"
+                    class="boton-stepper-mesero"
+                    :disabled="!cantidades[item.id]"
+                    @click="restarCantidad(item.id)"
+                  >
+                    −
+                  </button>
+                  <span class="cantidad-stepper-mesero">{{ cantidades[item.id] ?? 0 }}</span>
+                  <button type="button" class="boton-stepper-mesero" @click="sumarCantidad(item.id)">+</button>
+                </div>
+              </div>
+              <el-input
+                v-if="(cantidades[item.id] ?? 0) > 0"
+                v-model="observacionesPorItem[item.id]"
+                placeholder="Observaciones (ej: sin lechuga)"
+                size="small"
+                class="input-observaciones-item"
+                maxlength="200"
+              />
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="itemsSeleccionados.length > 0" class="resumen-pedido-mesero">
+          <span class="icono-resumen-pedido"><el-icon :size="18"><Document /></el-icon></span>
+          <div class="texto-resumen-pedido">
+            <p class="titulo-resumen-pedido">Resumen del pedido</p>
+            <p class="subtitulo-resumen-pedido">
+              {{ itemsSeleccionados.length }} {{ itemsSeleccionados.length === 1 ? 'producto' : 'productos' }}
+            </p>
+          </div>
+          <p class="total-resumen-pedido">Total: <strong>${{ totalPedidoMesero.toLocaleString('es-CO') }}</strong></p>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="dialogoPedidoAbierto = false">Cancelar</el-button>
+        <el-button
+          type="primary"
+          :loading="enviandoPedido"
+          :disabled="itemsSeleccionados.length === 0"
+          @click="enviarPedidoMesero"
+        >
+          <el-icon :size="14" style="margin-right: 6px"><Promotion /></el-icon>
+          Enviar pedido
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.layout {
+.pagina {
   min-height: 100dvh;
+  background: var(--surface-sunken);
 }
 
 .contenido-principal {
-  margin-left: var(--sidebar-width);
-  min-height: 100dvh;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
 }
 
-.encabezado {
-  padding: var(--gutter);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+.titulo-seccion {
+  margin-bottom: var(--space-6);
+}
+
+.titulo-seccion h1 {
+  font-size: 1.75rem;
+  margin-bottom: var(--space-1);
 }
 
 .subtitulo {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .contenido {
-  max-width: 1200px;
-  padding: var(--gutter);
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  position: relative;
-}
-
-.nav-item--activo {
-  background: var(--surface-muted);
-  color: var(--color-secondary);
-}
-
-.nav-item--activo::before {
-  content: '';
-  position: absolute;
-  left: -16px;
-  width: 4px;
-  height: 24px;
-  background: var(--color-secondary);
-  border-radius: 0 4px 4px 0;
+  width: 100%;
 }
 
 .franja-cerrar {
@@ -392,6 +1039,7 @@ onUnmounted(() => clearInterval(intervalo))
 }
 
 .tarjeta-pedido {
+  position: relative;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-left: 4px solid var(--color-warning);
@@ -405,6 +1053,10 @@ onUnmounted(() => clearInterval(intervalo))
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
 
+.tarjeta-pedido--tocable {
+  cursor: pointer;
+}
+
 .tarjeta-pedido--confirmado,
 .tarjeta-pedido--preparando {
   border-left-color: var(--color-secondary);
@@ -416,18 +1068,40 @@ onUnmounted(() => clearInterval(intervalo))
 
 .cabecera-pedido {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+.grupo-mesa {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .mesa {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.badge-canal {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
 }
 
 .badge-estado {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
@@ -474,15 +1148,22 @@ onUnmounted(() => clearInterval(intervalo))
   list-style: none;
   padding: 0;
   margin: 0 0 var(--space-4);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .items-pedido li {
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.items-pedido li:last-child {
+  border-bottom: none;
 }
 
 .cantidad-item {
-  font-weight: 600;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-secondary);
 }
 
 .observaciones {
@@ -491,14 +1172,15 @@ onUnmounted(() => clearInterval(intervalo))
   font-size: 0.825rem;
 }
 
-.acciones-pedido {
-  display: flex;
-  gap: var(--space-3);
+.select-repartidor {
+  flex: 1 1 160px;
+  min-width: 0;
 }
 
-.boton-accion {
-  flex: 1;
-  font-weight: 600;
+.texto-info-pedido {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .dialogo-mesa {
@@ -550,5 +1232,361 @@ onUnmounted(() => clearInterval(intervalo))
 .boton-factura-electronica {
   width: 100%;
   margin-top: var(--space-4);
+}
+
+.grid-mesas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.tarjeta-mesa {
+  position: relative;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-soft), var(--highlight-inset);
+  transition: box-shadow var(--duration-base) var(--ease-standard);
+}
+
+.tarjeta-mesa--clickable {
+  cursor: pointer;
+}
+
+.tarjeta-mesa--clickable:hover {
+  box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
+  border-color: var(--color-secondary);
+}
+
+.tarjeta-mesa--procesando {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.tarjeta-mesa--llamando {
+  border-color: var(--color-warning);
+}
+
+.pista-accion-mesa {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.menu-acciones-mesa {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+}
+
+.opcion-menu-mesa {
+  display: block;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.opcion-menu-mesa:hover {
+  background: var(--surface-muted);
+}
+
+.opcion-menu-mesa--liberar {
+  color: var(--color-danger);
+  border-color: var(--color-danger-bg);
+}
+
+.pista-cerrar-menu-mesa {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.aviso-llamado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.825rem;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.aviso-llamado span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.contenedor-mesa-visual {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-3) 0;
+}
+
+.mesa-visual-tarjeta {
+  width: 96px;
+  height: 96px;
+}
+
+.info-mesa {
+  margin-bottom: var(--space-4);
+  text-align: center;
+}
+
+.capacidad-mesa {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.codigo-acceso-mesa {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-top: var(--space-1);
+}
+
+.codigo-acceso-mesa .font-mono {
+  font-weight: 700;
+  color: var(--color-secondary);
+  letter-spacing: 0.05em;
+}
+
+.badge-estado-mesa--libre {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.badge-estado-mesa--ocupada {
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary-hover);
+}
+
+.badge-estado-mesa--reservada {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.cabecera-tomar-pedido {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.icono-tomar-pedido {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+  flex-shrink: 0;
+}
+
+.titulo-tomar-pedido {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.subtitulo-tomar-pedido {
+  color: var(--color-secondary);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.selector-canal-externo {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.opcion-canal-externo {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.opcion-canal-externo--activo {
+  border-color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  color: var(--color-secondary);
+}
+
+.contenedor-menu-pedido {
+  margin-top: var(--space-2);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.grupo-categoria-pedido + .grupo-categoria-pedido {
+  margin-top: var(--space-4);
+}
+
+.titulo-categoria-pedido {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.lista-menu-pedido {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.fila-menu-pedido {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fila-menu-pedido:last-child {
+  border-bottom: none;
+}
+
+.fila-menu-pedido-linea {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.foto-item-menu {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.info-item-menu {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-observaciones-item {
+  margin-top: var(--space-2);
+}
+
+.nombre-item-menu {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.precio-item-menu {
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+}
+
+.descripcion-item-menu {
+  color: var(--text-tertiary);
+  font-size: 0.775rem;
+  margin-top: var(--space-1);
+}
+
+.stepper-item-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  flex-shrink: 0;
+}
+
+.boton-stepper-mesero {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-secondary);
+}
+
+.boton-stepper-mesero:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cantidad-stepper-mesero {
+  min-width: 1.1rem;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.resumen-pedido-mesero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-secondary-soft);
+  border-radius: var(--radius-md);
+}
+
+.icono-resumen-pedido {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--color-secondary);
+  flex-shrink: 0;
+}
+
+.texto-resumen-pedido {
+  flex: 1;
+}
+
+.titulo-resumen-pedido {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.subtitulo-resumen-pedido {
+  color: var(--color-secondary);
+  font-size: 0.8rem;
+}
+
+.total-resumen-pedido {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.total-resumen-pedido strong {
+  color: var(--color-secondary);
+  font-size: 1.05rem;
 }
 </style>

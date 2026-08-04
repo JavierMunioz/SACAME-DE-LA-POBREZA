@@ -2,21 +2,34 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 
-export type Rol = 'admin_general' | 'admin_restaurante' | 'cliente' | 'mesero' | 'cocina'
-
-export const rolAHome: Record<Rol, string> = {
-  admin_general: '/admin',
-  admin_restaurante: '/admin',
-  cliente: '/cliente',
-  mesero: '/mesero',
-  cocina: '/cocina',
-}
+export type Rol = 'admin_general' | 'admin_restaurante' | 'cliente' | 'mesero' | 'cocina' | 'repartidor'
 
 interface Usuario {
   id: number
   nombre: string
   email: string
   rol: Rol
+  restaurante_id: number | null
+}
+
+// admin_restaurante no tiene un "home" fijo: su panel es el detalle de
+// SU restaurante, no la lista completa (esa es solo para admin_general).
+// Antes esto era un Record<Rol, string> plano — admin_restaurante caía
+// en '/admin' (la lista), una ruta que el guard le bloquea por rol,
+// generando un loop de navegación silencioso (login sin error visible,
+// sin efecto). Ver Brain.md.
+export function homeDeUsuario(usuario: Usuario): string {
+  if (usuario.rol === 'admin_restaurante') {
+    return usuario.restaurante_id ? `/admin/restaurantes/${usuario.restaurante_id}` : '/login'
+  }
+  const home: Record<Exclude<Rol, 'admin_restaurante'>, string> = {
+    admin_general: '/admin',
+    cliente: '/cliente',
+    mesero: '/mesero',
+    cocina: '/cocina',
+    repartidor: '/repartidor',
+  }
+  return home[usuario.rol]
 }
 
 export const useAuthStore = defineStore('auth', () => {

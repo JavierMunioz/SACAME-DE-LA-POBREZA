@@ -2,9 +2,11 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Connection, KnifeFork, SwitchButton, Warning } from '@element-plus/icons-vue'
+import { Connection, Loading, SwitchButton, Warning } from '@element-plus/icons-vue'
 import { listarPedidos, marcarListo, marcarPreparando, type Pedido } from '../../api/pedidos'
 import { useAuthStore } from '../../stores/auth'
+import logoWordmark from '../../assets/brand/logo-wordmark.png'
+import logoMark from '../../assets/brand/logo-mark.png'
 
 // Mismo enfoque que la comanda del mesero: polling simple, sin
 // WebSockets todavía (ver Brain.md).
@@ -47,6 +49,12 @@ function urgencia(pedido: Pedido): 'normal' | 'atencion' | 'urgente' {
   return 'normal'
 }
 
+const etiquetaCanal: Record<string, string> = {
+  domicilio_interno: 'Domicilio',
+  rappi: 'Rappi',
+  didi: 'Didi',
+}
+
 const ordenesAtrasadas = computed(
   () => pedidos.value.filter((p) => p.estado !== 'listo' && minutosEnEspera(p) >= 20).length,
 )
@@ -69,13 +77,24 @@ async function marcarComoListo(pedido: Pedido) {
   procesando.value = pedido.id
   try {
     await marcarListo(pedido.id)
-    ElMessage.success(`Mesa ${pedido.mesa_numero} lista para servir`)
+    ElMessage.success(
+      pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero} lista para servir` : 'Domicilio listo para salir',
+    )
     await cargar()
   } catch {
     ElMessage.error('No se pudo actualizar el pedido')
   } finally {
     procesando.value = null
   }
+}
+
+// Mismo patrón táctil que las mesas del mesero: acá cada estado tiene
+// una única acción posible (nada que elegir), así que toda la tarjeta
+// es el botón — no hace falta menú intermedio ni botón chico aparte.
+function onClickComanda(pedido: Pedido) {
+  if (procesando.value !== null) return
+  if (pedido.estado === 'confirmado') empezarPreparacion(pedido)
+  else if (pedido.estado === 'preparando') marcarComoListo(pedido)
 }
 
 function cerrarSesion() {
@@ -101,9 +120,12 @@ onUnmounted(() => {
     <header class="encabezado">
       <div class="encabezado-izq">
         <div class="marca-icono">
-          <el-icon :size="18"><KnifeFork /></el-icon>
+          <img :src="logoMark" alt="" class="marca-icono-img" />
         </div>
-        <h1>Sacame de la Pobreza <span class="marca-acento">Cocina</span></h1>
+        <h1 class="titulo-marca">
+          <img :src="logoWordmark" alt="LagoPos" class="marca-texto-completo" />
+          <span class="marca-acento">Cocina</span>
+        </h1>
         <div class="separador" />
         <div class="reloj">
           <span class="font-mono">{{ horaActual }}</span>
@@ -112,7 +134,7 @@ onUnmounted(() => {
       <div class="encabezado-der">
         <span class="indicador-activo">
           <span class="punto-verde" />
-          Sistema Operativo
+          <span class="indicador-texto">Sistema Operativo</span>
         </span>
         <button type="button" class="boton-icono" @click="cerrarSesion">
           <el-icon :size="18"><SwitchButton /></el-icon>
@@ -135,12 +157,21 @@ onUnmounted(() => {
           v-for="(pedido, i) in pedidos"
           :key="pedido.id"
           class="tarjeta-comanda"
-          :class="`tarjeta-comanda--${urgencia(pedido)}`"
+          :class="[
+            `tarjeta-comanda--${urgencia(pedido)}`,
+            { 'tarjeta-comanda--tocable': pedido.estado !== 'listo', 'tarjeta-comanda--procesando': procesando === pedido.id },
+          ]"
+          @click="onClickComanda(pedido)"
         >
           <div class="cabecera-comanda">
             <div>
               <h2 class="orden">Orden #{{ pedido.id }}</h2>
-              <p class="mesa">Mesa {{ pedido.mesa_numero }}</p>
+              <p class="mesa">
+                {{ pedido.mesa_numero !== null ? `Mesa ${pedido.mesa_numero}` : 'Domicilio' }}
+                <span v-if="pedido.canal !== 'mesa'" class="badge-canal-cocina">
+                  {{ etiquetaCanal[pedido.canal] }}
+                </span>
+              </p>
             </div>
             <div class="tiempo" :class="`tiempo--${urgencia(pedido)}`">
               <el-icon v-if="urgencia(pedido) === 'urgente'" :size="16"><Warning /></el-icon>
@@ -161,22 +192,14 @@ onUnmounted(() => {
           </div>
 
           <div class="acciones-comanda">
-            <el-button
-              v-if="pedido.estado === 'confirmado'"
-              class="boton-accion boton-preparando"
-              :loading="procesando === pedido.id"
-              @click="empezarPreparacion(pedido)"
-            >
-              Preparando
-            </el-button>
-            <el-button
-              v-else-if="pedido.estado === 'preparando'"
-              class="boton-accion boton-listo"
-              :loading="procesando === pedido.id"
-              @click="marcarComoListo(pedido)"
-            >
-              Listo
-            </el-button>
+            <div v-if="pedido.estado === 'confirmado'" class="pista-accion-comanda pista-accion-comanda--preparando">
+              <el-icon v-if="procesando === pedido.id"><Loading /></el-icon>
+              Tocá para pasar a preparando
+            </div>
+            <div v-else-if="pedido.estado === 'preparando'" class="pista-accion-comanda pista-accion-comanda--listo">
+              <el-icon v-if="procesando === pedido.id"><Loading /></el-icon>
+              Tocá para marcar listo
+            </div>
             <div v-else class="aviso-listo">Esperando al mesero</div>
           </div>
         </article>
@@ -212,20 +235,35 @@ onUnmounted(() => {
 
 .encabezado {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 0 var(--gutter);
-  height: 64px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  min-height: 64px;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
 }
 
+@media (min-width: 640px) {
+  .encabezado {
+    padding: 0 var(--gutter);
+  }
+}
+
 .encabezado-izq {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .encabezado-izq {
+    gap: var(--space-4);
+  }
 }
 
 .marca-icono {
@@ -235,7 +273,34 @@ onUnmounted(() => {
   height: 32px;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.titulo-marca {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.marca-texto-completo {
+  height: 17px;
+  width: auto;
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .marca-texto-completo {
+    display: block;
+  }
 }
 
 .encabezado h1 {
@@ -252,6 +317,14 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background: var(--border-subtle);
+  flex-shrink: 0;
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .separador {
+    display: block;
+  }
 }
 
 .reloj {
@@ -262,12 +335,20 @@ onUnmounted(() => {
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .encabezado-der {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .encabezado-der {
+    gap: var(--space-4);
+  }
 }
 
 .indicador-activo {
@@ -276,6 +357,16 @@ onUnmounted(() => {
   gap: var(--space-2);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.indicador-texto {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .indicador-texto {
+    display: inline;
+  }
 }
 
 .punto-verde {
@@ -310,8 +401,14 @@ onUnmounted(() => {
 
 .grid-comandas {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-5);
+}
+
+@media (min-width: 480px) {
+  .grid-comandas {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
 }
 
 .tarjeta-skeleton {
@@ -350,6 +447,15 @@ onUnmounted(() => {
   transition: box-shadow var(--duration-base) var(--ease-standard);
 }
 
+.tarjeta-comanda--tocable {
+  cursor: pointer;
+}
+
+.tarjeta-comanda--procesando {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .tarjeta-comanda:hover {
   box-shadow: var(--shadow-soft-hover), var(--highlight-inset);
 }
@@ -381,6 +487,18 @@ onUnmounted(() => {
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.badge-canal-cocina {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-secondary);
+  background: var(--color-secondary-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  margin-left: var(--space-2);
 }
 
 .tiempo {
@@ -465,31 +583,25 @@ onUnmounted(() => {
   background: transparent;
 }
 
-.boton-accion {
+.pista-accion-comanda {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
   height: 52px;
   font-size: 1rem;
   font-weight: 700;
-  border: none;
+  border-radius: var(--radius-sm);
   color: white;
 }
 
-.boton-preparando {
+.pista-accion-comanda--preparando {
   background: var(--color-warning);
 }
 
-.boton-preparando:hover {
-  background: #d97706;
-  color: white;
-}
-
-.boton-listo {
+.pista-accion-comanda--listo {
   background: var(--color-success);
-}
-
-.boton-listo:hover {
-  background: #15803d;
-  color: white;
 }
 
 .aviso-listo {
@@ -502,20 +614,36 @@ onUnmounted(() => {
 }
 
 .pie {
-  height: 48px;
+  min-height: 48px;
   flex-shrink: 0;
   background: var(--color-primary);
   color: white;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--gutter);
-  font-size: 0.875rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 640px) {
+  .pie {
+    padding: 0 var(--gutter);
+    font-size: 0.875rem;
+  }
 }
 
 .pie-contadores {
   display: flex;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (min-width: 640px) {
+  .pie-contadores {
+    gap: var(--space-6);
+  }
 }
 
 .pie-item {

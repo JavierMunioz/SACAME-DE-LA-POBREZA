@@ -18,11 +18,14 @@ def _factura_a_out(factura: Factura, items: list[ItemPedidoOut]) -> FacturaOut:
     return FacturaOut(
         id=factura.id,
         mesa_id=factura.mesa_id,
-        mesa_numero=factura.mesa.numero,
+        mesa_numero=factura.mesa.numero if factura.mesa else None,
+        restaurante_id=factura.restaurante_id,
         subtotal=factura.subtotal,
         incluye_propina=factura.incluye_propina,
         propina=factura.propina,
         total=factura.total,
+        pagado=factura.pagado,
+        pagado_at=factura.pagado_at,
         created_at=factura.created_at,
         items=items,
     )
@@ -47,16 +50,15 @@ async def generar_factura(
     if mesa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mesa no encontrada")
 
-    # Se factura todo lo que ya pasó por cocina (confirmado, preparando o
-    # listo) y que todavía no esté en otra factura. Lo pendiente no cuenta:
-    # no se le puede cobrar al cliente algo que la cocina ni recibió.
+    # Solo se factura lo que el mesero ya confirmó como entregado en la
+    # mesa (ver Brain.md) — no alcanza con que cocina lo haya marcado
+    # "listo": eso es que está listo para servir, no que ya se sirvió. No
+    # se le cobra al cliente algo que todavía no llegó a la mesa.
     pedidos = (
         db.query(Pedido)
         .filter(
             Pedido.mesa_id == mesa_id,
-            Pedido.estado.in_(
-                [EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO, EstadoPedido.LISTO]
-            ),
+            Pedido.estado == EstadoPedido.ENTREGADO,
             Pedido.factura_id.is_(None),
         )
         .all()
@@ -64,7 +66,7 @@ async def generar_factura(
     if not pedidos:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "No hay pedidos confirmados pendientes de facturar en esta mesa",
+            "No hay pedidos entregados pendientes de facturar en esta mesa",
         )
 
     items = [item for pedido in pedidos for item in pedido.items]
@@ -78,17 +80,22 @@ async def generar_factura(
 
     factura = Factura(
         mesa_id=mesa_id,
+        restaurante_id=mesa.restaurante_id,
         subtotal=subtotal,
         incluye_propina=datos.incluye_propina,
         propina=propina,
         total=total,
+        # Se asume cobrada al cerrar la mesa, como siempre funcionó este
+        # flujo — a diferencia de la prefactura de domicilio, que nace
+        # sin pagar (ver POST /pedidos/{id}/prefactura).
+        pagado=True,
+        pagado_at=datetime.now(timezone.utc),
     )
     db.add(factura)
     db.flush()
 
     for pedido in pedidos:
         pedido.factura_id = factura.id
-        pedido.estado = EstadoPedido.ENTREGADO
 
     # Facturar cierra la mesa: se acabó la sesión de quien la reclamó, y
     # la mesa vuelve a estar libre para el próximo comensal.
@@ -127,8 +134,7 @@ def obtener_factura(
 ):
     factura = (
         db.query(Factura)
-        .join(Mesa)
-        .filter(Factura.id == factura_id, Mesa.restaurante_id == mesero.restaurante_id)
+        .filter(Factura.id == factura_id, Factura.restaurante_id == mesero.restaurante_id)
         .first()
     )
     if factura is None:

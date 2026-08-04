@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KnifeFork } from '@element-plus/icons-vue'
-import { rolAHome, useAuthStore } from '../stores/auth'
+import { homeDeUsuario, useAuthStore } from '../stores/auth'
+import logoWordmark from '../assets/brand/logo-wordmark.png'
+import logoMark from '../assets/brand/logo-mark.png'
 
 const form = reactive({ email: '', password: '' })
 const recordar = ref(true)
@@ -18,7 +19,7 @@ async function enviar() {
   try {
     await auth.login(form.email, form.password, recordar.value)
     const destino =
-      (route.query.redirect as string) || (auth.usuario ? rolAHome[auth.usuario.rol] : '/')
+      (route.query.redirect as string) || (auth.usuario ? homeDeUsuario(auth.usuario) : '/')
     router.push(destino)
   } catch {
     error.value = 'Email o contraseña incorrectos.'
@@ -30,137 +31,189 @@ async function enviar() {
 
 <template>
   <div class="pagina">
-    <div class="fondo-hero" aria-hidden="true"></div>
-    <div class="tarjeta glass-panel">
-      <div class="marca">
-        <span class="marca-icono"><el-icon :size="20"><KnifeFork /></el-icon></span>
-        <span class="marca-nombre">Sacame de la Pobreza</span>
-        <span class="marca-subtitulo">Panel de gestión</span>
+    <aside class="panel-marca">
+      <div class="marca-icono">
+        <img :src="logoMark" alt="" class="marca-icono-img" />
       </div>
-
-      <div class="encabezado">
-        <h1>Bienvenido de nuevo</h1>
-        <p class="subtitulo">Entrá para gestionar reservas, mesas y pedidos.</p>
-      </div>
-
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="alerta" />
-
-      <form class="formulario" @submit.prevent="enviar">
-        <label class="campo">
-          <span class="campo-label label-mono">Email</span>
-          <el-input
-            v-model="form.email"
-            type="email"
-            size="large"
-            autocomplete="username"
-            placeholder="vos@ejemplo.com"
-          />
-        </label>
-        <label class="campo">
-          <span class="campo-label label-mono">Contraseña</span>
-          <el-input
-            v-model="form.password"
-            type="password"
-            size="large"
-            autocomplete="current-password"
-            show-password
-            placeholder="••••••••"
-          />
-        </label>
-        <label class="campo-checkbox">
-          <el-checkbox v-model="recordar">Recordar este dispositivo</el-checkbox>
-        </label>
-        <el-button
-          type="primary"
-          size="large"
-          native-type="submit"
-          :loading="cargando"
-          class="boton-entrar"
-        >
-          Entrar
-        </el-button>
-      </form>
-
-      <p class="link-registro">
-        ¿Todavía no tenés cuenta? <router-link to="/registro">Crear cuenta</router-link>
+      <img :src="logoWordmark" alt="LagoPos" class="panel-marca-logo" />
+      <p class="panel-marca-texto">
+        Reservas, mesas y pedidos en un solo lugar. Escaneá, pedí, servís, cerrá la mesa.
       </p>
+      <ul class="panel-marca-lista">
+        <li>Pedidos de invitados sin cuenta</li>
+        <li>Carrito de mesa sincronizado en vivo</li>
+        <li>Cocina y mesero conectados en tiempo real</li>
+      </ul>
+    </aside>
 
-      <div class="nota-invitado">
-        <span>¿Venís a comer?</span> No hace falta cuenta: escaneá el QR de tu mesa y pedís directo.
+    <main class="panel-form">
+      <div class="formulario-wrap">
+        <div class="encabezado">
+          <h2>Bienvenido de nuevo</h2>
+          <p class="subtitulo">Entrá para gestionar reservas, mesas y pedidos.</p>
+        </div>
+
+        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="alerta" />
+
+        <form class="formulario" @submit.prevent="enviar">
+          <label class="campo">
+            <span class="campo-label label-mono">Email</span>
+            <el-input
+              v-model="form.email"
+              type="email"
+              size="large"
+              autocomplete="username"
+              placeholder="vos@ejemplo.com"
+            />
+          </label>
+          <label class="campo">
+            <span class="campo-label label-mono">Contraseña</span>
+            <el-input
+              v-model="form.password"
+              type="password"
+              size="large"
+              autocomplete="current-password"
+              show-password
+              placeholder="••••••••"
+            />
+          </label>
+          <label class="campo-checkbox">
+            <el-checkbox v-model="recordar">Recordar este dispositivo</el-checkbox>
+          </label>
+          <el-button
+            type="primary"
+            size="large"
+            native-type="submit"
+            :loading="cargando"
+            class="boton-entrar"
+          >
+            Entrar
+          </el-button>
+        </form>
+
+        <p class="link-registro">
+          ¿Todavía no tenés cuenta? <router-link to="/registro">Crear cuenta</router-link>
+        </p>
+
+        <div class="nota-invitado">
+          <span>¿Venís a comer?</span> No hace falta cuenta: escaneá el QR de tu mesa y pedís directo.
+        </div>
       </div>
-    </div>
+    </main>
   </div>
 </template>
 
 <style scoped>
 .pagina {
   min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .pagina {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.panel-marca {
+  display: none;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-  background: var(--surface-sunken);
-  overflow: hidden;
-}
-
-.fondo-hero {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 12% 15%, rgba(79, 70, 229, 0.22), transparent 42%),
-    radial-gradient(circle at 88% 20%, rgba(79, 70, 229, 0.12), transparent 38%),
-    radial-gradient(circle at 80% 85%, rgba(24, 24, 27, 0.16), transparent 45%),
-    radial-gradient(circle at 10% 90%, rgba(79, 70, 229, 0.1), transparent 40%);
-  pointer-events: none;
-}
-
-.tarjeta {
-  position: relative;
-  width: 100%;
-  max-width: 400px;
-  border-radius: var(--radius-lg);
-  padding: var(--space-8);
-}
-
-.marca {
-  display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-8);
+  justify-content: center;
+  padding: var(--space-16) var(--space-12);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 85, 85, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(255, 85, 85, 0.2), transparent 40%),
+    radial-gradient(circle at 60% 90%, rgba(31, 49, 67, 0.5), transparent 50%),
+    var(--color-primary);
+}
+
+@media (min-width: 900px) {
+  .panel-marca {
+    display: flex;
+  }
 }
 
 .marca-icono {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  align-self: flex-start;
+  margin-bottom: var(--space-6);
+  overflow: hidden;
+}
+
+.marca-icono-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.panel-marca-logo {
+  height: 52px;
+  width: auto;
+  align-self: flex-start;
+  margin-bottom: var(--space-8);
+}
+
+.panel-marca-texto {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 32ch;
+  margin-bottom: var(--space-8);
+}
+
+.panel-marca-lista {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.panel-marca-lista li {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  padding-left: var(--space-5);
+  position: relative;
+}
+
+.panel-marca-lista li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
   background: var(--color-secondary);
-  color: white;
-  margin-bottom: var(--space-1);
 }
 
-.marca-nombre {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--text-primary);
+.panel-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--surface-raised);
 }
 
-.marca-subtitulo {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
+.formulario-wrap {
+  width: 100%;
+  max-width: 360px;
 }
 
 .encabezado {
   margin-bottom: var(--space-6);
-  text-align: center;
 }
 
-.encabezado h1 {
+.encabezado h2 {
   font-size: 1.4rem;
   margin-bottom: var(--space-1);
 }
@@ -217,7 +270,7 @@ async function enviar() {
 .nota-invitado {
   margin-top: var(--space-6);
   padding: var(--space-4);
-  background: var(--surface-sunken);
+  background: var(--surface-muted);
   border-radius: var(--radius-sm);
   font-size: 0.825rem;
   color: var(--text-secondary);
