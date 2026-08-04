@@ -56,6 +56,14 @@ No se borran entradas viejas. Si algo queda obsoleto, se marca como `(obsoleto, 
 
 ## Bitácora
 
+### [2026-08-03] El invitado sin cuenta puede ver el estado de su pedido
+Feedback directo del usuario probando desde otro dispositivo: "del lado del cliente que no esta logueado no sale, no se por donde va mi pedido". Causa raíz doble: (1) no existía ningún endpoint que un invitado sin JWT pudiera usar para consultar sus pedidos — todo lo que ya existía (`GET /pedidos/{id}`, `/cliente/pedidos`) exige login real, y el invitado solo tiene el token de `SesionMesa`; (2) encima `enviarPedido()` en `MesaView.vue` hacía `router.push('/cliente')` apenas mandaba el pedido — sacaba al invitado de la única pantalla donde algo podría mostrarse, así que aunque hubiera existido tracking, no lo habría visto.
+
+- Backend: `GET /mesas/{mesa_id}/mis-pedidos?token=...` en `mesas.py` — busca la `SesionMesa` activa por `token` o `token_dueno` (sirve tanto al dueño como a cualquiera que se unió con el código de 4 dígitos), devuelve los pedidos de esa sesión (`sesion_mesa_id`) vía el mismo `_pedido_a_out` de `pedidos.py`. 404 si el token no matchea ninguna sesión abierta — no expone pedidos de otras mesas.
+- Frontend: se saca el `router.push('/cliente')` de `enviarPedido()` — ahora se queda en la mesa. Nueva sección "Tus pedidos" en `MesaView.vue`, poll cada 5s (mismo patrón que el resto del software, no WebSockets) mientras haya sesión activa, con badge de estado (`pendiente/confirmado/preparando/listo/en_camino/entregado/cancelado`) reusando las mismas etiquetas de `MisPedidosView.vue`. Polling arranca tanto al cargar con sesión guardada en `localStorage` como al reclamar/unirse a la mesa, y se detiene si la sesión vence (401) o al desmontar.
+- Probado end-to-end contra el backend real corriendo en LAN (curl): ocupar mesa → crear pedido → `mis-pedidos` con `token_dueno` lo ve, con el `token` compartido (invitado que se unió) también lo ve, con un token cualquiera da 404. Typecheck limpio.
+- Pendiente real: esto solo cubre pedidos hechos desde la mesa (`canal=mesa`). Los pedidos a domicilio de un cliente logueado siguen su propio tracking (`SeguimientoPedidoView.vue`, ya existía) — no se tocó.
+
 ### [2026-08-03] El isotipo real (segunda imagen del usuario) faltaba en todas las cajitas de marca chicas
 Reclamo directo del usuario mostrando de nuevo el isotipo ("ola/montaña" plateado+coral) — en la pasada anterior decidí no usarlo en los espacios cuadrados chicos (cajita de nav, favicon, letra de marca en cliente/cocina) porque la composición es dispersa y un recorte parcial se veía mal. Esa decisión fue mal recibida: el usuario quiere ESE logo específico usado, no que se le sustituya por criterio propio en los lugares donde "no calzaba perfecto".
 

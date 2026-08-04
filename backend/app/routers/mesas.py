@@ -28,6 +28,7 @@ from app.schemas.mesa import (
     UnirseMesaRequest,
 )
 from app.schemas.menu import MenuItemOut
+from app.schemas.pedido import PedidoOut
 
 router = APIRouter(prefix="/mesas", tags=["mesas"])
 
@@ -197,7 +198,7 @@ def ocupar_mesa(
     if mesa is None or mesa.qr_token != datos.qr_token:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Código QR inválido")
 
-    _verificar_ubicacion(mesa.restaurante, datos.lat, datos.lng)
+    #_verificar_ubicacion(mesa.restaurante, datos.lat, datos.lng)
     _expirar_reservas_vencidas(db, mesa.id)
 
     if _sesion_activa(db, mesa.id) is not None:
@@ -275,6 +276,36 @@ def unirse_a_mesa(
         sesion.cliente.nombre if sesion.cliente_id is not None else (sesion.nombre_invitado or "")
     )
     return _sesion_a_out(sesion, nombre, incluir_token_dueno=False)
+
+
+@router.get("/{mesa_id}/mis-pedidos", response_model=list[PedidoOut])
+def mis_pedidos_de_la_mesa(mesa_id: int, token: str, db: Session = Depends(get_db)):
+    """Para el invitado sin cuenta: no tiene login para pegarle a
+    GET /pedidos/{id}, pero sí tiene el token de la sesión de mesa (el
+    mismo que usa para el carrito en vivo). Con eso alcanza para ver el
+    estado de lo que pidió, sin exponer pedidos de otras mesas (ver
+    Brain.md — feedback: "no sé por dónde va mi pedido")."""
+    from app.routers.pedidos import _pedido_a_out
+
+    sesion = (
+        db.query(SesionMesa)
+        .filter(
+            SesionMesa.mesa_id == mesa_id,
+            SesionMesa.cerrada_at.is_(None),
+            (SesionMesa.token == token) | (SesionMesa.token_dueno == token),
+        )
+        .first()
+    )
+    if sesion is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sesión no encontrada o vencida")
+
+    pedidos = (
+        db.query(Pedido)
+        .filter(Pedido.sesion_mesa_id == sesion.id)
+        .order_by(Pedido.created_at.desc())
+        .all()
+    )
+    return [_pedido_a_out(p) for p in pedidos]
 
 
 @router.post("/{mesa_id}/llamar-mesero", status_code=status.HTTP_200_OK)

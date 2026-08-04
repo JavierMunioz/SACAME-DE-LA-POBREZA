@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { MenuItem } from './restaurantes'
+import type { Pedido } from './pedidos'
 
 export interface ReservaInfo {
   id: number
@@ -115,5 +116,12 @@ export async function unirseAMesa(
     qr_token: qrToken,
     codigo_acceso: codigoAcceso,
   })
+  return data
+}
+
+/** Para el invitado sin cuenta: ver el estado de sus pedidos con el token
+ * de la sesión de mesa, sin necesitar login. */
+export async function misPedidosDeLaMesa(mesaId: number, token: string): Promise<Pedido[]> {
+  const { data } = await api.get<Pedido[]>(`/mesas/${mesaId}/mis-pedidos`, { params: { token } })
   return data
 }

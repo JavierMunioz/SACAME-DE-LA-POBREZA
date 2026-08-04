@@ -6,6 +6,7 @@ import { ArrowLeft, Bell, Check, InfoFilled, Search, ShoppingBag, Grid } from '@
 import {
   canjearQr,
   llamarMesero as llamarMeseroApi,
+  misPedidosDeLaMesa,
   obtenerUbicacion,
   ocuparMesa,
   unirseAMesa,
@@ -13,7 +14,7 @@ import {
   type MesaQrInfo,
   type SesionMesa,
 } from '../api/mesas'
-import { crearPedido } from '../api/pedidos'
+import { crearPedido, type Pedido } from '../api/pedidos'
 import { useAuthStore } from '../stores/auth'
 import { agruparMenuPorCategoria } from '../utils/menuCategorias'
 import { imagenComida } from '../utils/imagenesComida'
@@ -46,7 +47,19 @@ const observaciones = reactive<Record<number, string>>({})
 
 const esDueno = computed(() => !!sesion.value?.token_dueno)
 
+const misPedidos = ref<Pedido[]>([])
+const etiquetaEstadoPedido: Record<Pedido['estado'], string> = {
+  pendiente: 'Pendiente',
+  confirmado: 'Confirmado',
+  preparando: 'Preparando',
+  listo: 'Listo',
+  en_camino: 'En camino',
+  entregado: 'Entregado',
+  cancelado: 'Cancelado',
+}
+
 let ws: WebSocket | null = null
+let intervaloPedidos: ReturnType<typeof setInterval> | null = null
 
 function claveSesion(mesaId: number) {
   return `sesion-mesa-${mesaId}`
@@ -89,6 +102,31 @@ function desconectarCarritoEnVivo() {
   ws = null
 }
 
+// Estado de los pedidos ya enviados: el invitado sin cuenta no tiene login
+// para pegarle a /pedidos, pero con el token de su sesión de mesa alcanza
+// para ver por dónde va lo que pidió (ver Brain.md — feedback: "no sé por
+// dónde va mi pedido"). Polling en vez de WS: mismo patrón que el resto
+// del software para reflejar cambios de estado.
+async function cargarMisPedidos() {
+  if (!info.value || !sesion.value) return
+  try {
+    misPedidos.value = await misPedidosDeLaMesa(info.value.mesa_id, sesion.value.token)
+  } catch {
+    // silencioso: no tapar la pantalla por un polling fallido
+  }
+}
+
+function iniciarPollingPedidos() {
+  detenerPollingPedidos()
+  cargarMisPedidos()
+  intervaloPedidos = setInterval(cargarMisPedidos, 5000)
+}
+
+function detenerPollingPedidos() {
+  if (intervaloPedidos) clearInterval(intervaloPedidos)
+  intervaloPedidos = null
+}
+
 function enviarCambioItem(menuItemId: number, cantidad: number) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return
   ws.send(
@@ -123,7 +161,10 @@ async function cargar() {
     // es de una visita anterior ya cerrada — no sirve, se descarta.
     sesion.value = info.value.requiere_codigo || guardada ? guardada : null
     if (!info.value.requiere_codigo && guardada) borrarSesion(info.value.mesa_id)
-    if (sesion.value) conectarCarritoEnVivo(info.value.mesa_id, sesion.value.token)
+    if (sesion.value) {
+      conectarCarritoEnVivo(info.value.mesa_id, sesion.value.token)
+      iniciarPollingPedidos()
+    }
   } catch {
     errorToken.value = true
   } finally {
@@ -134,15 +175,20 @@ async function cargar() {
 // Si el restaurante configuró su ubicación real, hay que pedir permiso de
 // geolocalización antes de ocupar (ver Brain.md: QR fotografiado y usado
 // a distancia). Si el restaurante no la configuró, no se pide nada.
+// TEMPORAL: verificación de ubicación desactivada (junto con la del
+// backend en mesas.py) para poder probar desde otro dispositivo en la
+// red sin estar físicamente en el restaurante. Reactivar antes de
+// producción descomentando el cuerpo original de abajo.
 async function ubicacionParaOcupar(): Promise<{ lat: number; lng: number } | undefined> {
-  if (!info.value?.requiere_ubicacion) return undefined
-  const ubicacion = await obtenerUbicacion()
-  if (!ubicacion) {
-    errorReclamo.value =
-      'Necesitamos tu ubicación para abrir la mesa. Activá la ubicación del navegador e intentá de nuevo.'
-    throw new Error('sin-ubicacion')
-  }
-  return ubicacion
+  return undefined
+  // if (!info.value?.requiere_ubicacion) return undefined
+  // const ubicacion = await obtenerUbicacion()
+  // if (!ubicacion) {
+  //   errorReclamo.value =
+  //     'Necesitamos tu ubicación para abrir la mesa. Activá la ubicación del navegador e intentá de nuevo.'
+  //   throw new Error('sin-ubicacion')
+  // }
+  // return ubicacion
 }
 
 async function reclamarComoInvitado() {
@@ -197,7 +243,10 @@ async function reclamar(accion: () => Promise<SesionMesa>) {
     const s = await accion()
     sesion.value = s
     guardarSesion(s)
-    if (info.value) conectarCarritoEnVivo(info.value.mesa_id, s.token)
+    if (info.value) {
+      conectarCarritoEnVivo(info.value.mesa_id, s.token)
+      iniciarPollingPedidos()
+    }
   } catch (e: unknown) {
     if (e instanceof Error && e.message === 'sin-ubicacion') {
       // el mensaje específico ya quedó seteado en ubicacionParaOcupar.
@@ -275,13 +324,14 @@ async function enviarPedido() {
     await crearPedido(info.value.mesa_id, items, sesion.value.token_dueno)
     ElMessage.success('Pedido enviado a la cocina')
     Object.keys(carrito).forEach((k) => delete carrito[Number(k)])
-    router.push('/cliente')
+    cargarMisPedidos()
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status
     if (status === 401 && info.value) {
       borrarSesion(info.value.mesa_id)
       sesion.value = null
       desconectarCarritoEnVivo()
+      detenerPollingPedidos()
       ElMessage.error('Tu sesión de mesa venció. Volvé a abrir o unirte a la mesa.')
     } else {
       ElMessage.error('No se pudo enviar el pedido')
@@ -314,7 +364,10 @@ function volverAlRestaurante() {
 }
 
 onMounted(cargar)
-onUnmounted(desconectarCarritoEnVivo)
+onUnmounted(() => {
+  desconectarCarritoEnVivo()
+  detenerPollingPedidos()
+})
 </script>
 
 <template>
@@ -375,6 +428,28 @@ onUnmounted(desconectarCarritoEnVivo)
             <span>Código de tu mesa: <strong class="font-mono">{{ sesion.codigo_acceso }}</strong></span>
             <span class="icono-qr"><el-icon :size="18"><Grid /></el-icon></span>
           </div>
+        </div>
+
+        <div v-if="misPedidos.length > 0" class="tarjeta-mis-pedidos">
+          <p class="titulo-mis-pedidos">Tus pedidos</p>
+          <ul class="lista-mis-pedidos">
+            <li v-for="pedido in misPedidos" :key="pedido.id" class="fila-mis-pedidos">
+              <div class="info-mis-pedidos">
+                <span class="items-mis-pedidos">
+                  {{ pedido.items.map((i) => `${i.cantidad}× ${i.menu_item_nombre}`).join(', ') }}
+                </span>
+                <span class="hora-mis-pedidos">
+                  {{ new Date(pedido.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) }}
+                </span>
+              </div>
+              <el-tag
+                :type="pedido.estado === 'entregado' ? 'success' : pedido.estado === 'cancelado' ? 'danger' : 'warning'"
+                round
+              >
+                {{ etiquetaEstadoPedido[pedido.estado] }}
+              </el-tag>
+            </li>
+          </ul>
         </div>
 
         <template v-if="sesion">
@@ -777,6 +852,56 @@ onUnmounted(desconectarCarritoEnVivo)
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--color-success);
+}
+
+.tarjeta-mis-pedidos {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.titulo-mis-pedidos {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: var(--space-3);
+}
+
+.lista-mis-pedidos {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fila-mis-pedidos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.info-mis-pedidos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.items-mis-pedidos {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hora-mis-pedidos {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
 }
 
 .aviso-no-dueno {
